@@ -2,7 +2,7 @@
 
 > Built at OpenAI Codex Hackathon Sydney - Wednesday, 29 April 2026
 
-**LearnGuard is the only IDE that lets Codex actually try to write your code — then blocks it until you understand why. Student comprehension is the permission layer. We have a scoreboard to prove it holds.**
+**LearnGuard is a SwiftUI study-mode IDE where the learner writes the code, Codex teaches through Socratic guidance, and the Scoreboard proves the comprehension gate holds. The optional MCP rehearsal lets Codex exercise the same action policy from a local Codex session.**
 
 Pitch:
 
@@ -17,18 +17,27 @@ Original repository: https://github.com/minchiaHuang/LearnGuard
 For the OpenAI Codex Hackathon, the prior LearnGuard learning backend was extended with:
 
 - **Codex MCP gate rehearsal** - the local LearnGuard MCP server exposes guarded workspace tools for the Codex demo. Treat Codex CLI registration as environment-specific until verified on the demo machine. Run the prompt only after confirming the LearnGuard MCP tools are available: `codex "$(cat scripts/codex_demo_prompt.md)"`
-- **Adversarial Red Team Scoreboard** - 10 attack vectors (level boundary violations, premature file access, path traversal) run against the gate. Score: **8/8 attacks blocked, 2/2 legitimate actions passed. Precision: 100%.** Live in the app's Red Team tab.
-- **Native macOS SwiftUI study shell** - Explorer, code context, Tutor, Visual trace, and Red Team scoreboard
+- **Eval Scoreboard** - four judging panels for Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval. The Red-team section includes 10 attack vectors with **8/8 attacks blocked, 2/2 legitimate actions passed, Precision: 100%.**
+- **Native macOS SwiftUI study shell** - Explorer, code context, Tutor, Visual trace, Scoreboard, and `skills.md` memory preview
 - **Codex study-mode Tutor** - Socratic prompts that guide the learner instead of pasting a full answer
 - **Visual algorithm explainer** - a Two Sum hash map trace for concept understanding
 - **Background comprehension tracker** - score, missing concepts, hint depth, and Learning Debt state
 - **Formal product spec** - `SPEC.md` defines the student-first target MVP
 
-The SwiftUI app is the primary demo direction. The existing web frontend remains as a fallback demo surface.
+The SwiftUI app is the primary demo direction. The MCP rehearsal is a local technical proof path for Codex action gating, and the existing web frontend plus Playwright recording script remain fallback demo surfaces. These secondary surfaces may not show the full SwiftUI Scoreboard and `skills.md` memory experience.
 
-## Red Team Scoreboard
+## Eval Scoreboard
 
-10 adversarial Codex workspace actions tested against the gate:
+The SwiftUI Scoreboard tab is the main judging surface:
+
+| Panel | What it proves |
+|---|---|
+| Comprehension Eval | The judge maps learner answers to the expected score and permission level. |
+| Gate Policy Eval | Workspace actions are allowed or blocked at the correct autonomy level. |
+| Leakage Eval | Student-facing tutor paths refuse full-solution leakage. |
+| Red-team Eval | Adversarial Codex actions cannot bypass the gate. |
+
+Red-team cases included in the final panel:
 
 | Attack | Level | Result |
 |---|---|---|
@@ -45,6 +54,18 @@ The SwiftUI app is the primary demo direction. The existing web frontend remains
 
 **Block rate: 8/8 · Precision: 100%**
 
+## Two-minute Live Demo Script
+
+Use the native SwiftUI app for the official demo. Keep the MCP rehearsal and web fallback available, but do not make them the main story.
+
+| Time | Action | Say |
+|---|---|---|
+| 0:00-0:20 | Start Session. Show the failing Two Sum workspace, checkpoint question, and Level 0. | "Codex normally wants to jump straight to the solution." |
+| 0:20-0:45 | Show that direct solution help is blocked before understanding is proven. | "The learner's comprehension is the permission layer." |
+| 0:45-1:10 | Enter or use the prepared full checkpoint answer. Show score reaches `4/4` and the level rises. | "The student earns more workspace capability by explaining the concept." |
+| 1:10-1:40 | Open Scoreboard. Show Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval all passing. | "LearnGuard does not just teach. It measures whether the gate holds." |
+| 1:40-2:00 | Show the `skills.md` preview as Learning Debt memory. | "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act." |
+
 ## Product Direction
 
 The student is the main actor:
@@ -56,11 +77,25 @@ The student is the main actor:
 5. The student improves the code.
 6. Run validates the student's own solution.
 
-The local LearnGuard MCP gate can evaluate guarded workspace actions against the student's current comprehension level. When Codex CLI is explicitly configured to use that MCP server, the demo prompt exercises the same gate from Codex. The Red Team tab proves the gate policy holds under the checked adversarial cases.
+The local LearnGuard MCP gate can evaluate guarded workspace actions against the student's current comprehension level. When Codex CLI is explicitly configured to use that MCP server, the demo prompt exercises the same gate from Codex. The SwiftUI Scoreboard proves the gate policy holds, while the `skills.md` preview turns Learning Debt into reusable learner memory.
 
 ## Product Maturity
 
 This repository contains the hackathon MVP. It demonstrates the core student-first workflow, but production readiness would require persistence, authentication, sandboxed execution, multi-problem support, arbitrary repository support, and full Codex tutor orchestration.
+
+## Repository And Source Map
+
+The product repo is this `LearnGuard/` directory. Adjacent hackathon folders are retained as source material, not runtime code.
+
+| Path | Role | Handling |
+|---|---|---|
+| `.` | Product repo for the public submission. Contains FastAPI, SwiftUI, MCP, tests, demo repo, and canonical docs. | Commit and verify here. |
+| `../style/` | Design prototype and visual reference files for the SwiftUI polish direction. | Reference only. Do not move or copy into this repo unless a future design-asset task explicitly asks for it. |
+| `../test/` | Separate historical/legacy git repo used during earlier local demo work. | Keep separate. Do not mix its dirty tree into this repo. |
+| `../OpenAI Codex Hackathon - Sydney · Luma.pdf` | Event source for rules, schedule, and submission requirements. | Reference for README/SPEC claims. |
+| `../openai_codex_hackathon_winning_projects.xlsx` | Research table of prior OpenAI/Codex hackathon winners and repeated judging patterns. | Reference for positioning; not a product dependency. |
+
+The strongest pattern from the prep materials is: Codex-native workflow, measurable eval or verification loop, and a visible artifact judges can inspect. LearnGuard maps that pattern to a student-first coding IDE: learner answer -> policy level -> guarded workspace action -> tests/evals -> Learning Debt memory.
 
 ## What Already Existed
 
@@ -84,6 +119,10 @@ Implemented now:
 - SwiftPM macOS app shell
 - web fallback demo
 - MCP server
+- built-in problem catalog for small onboarding tasks
+- Eval Scoreboard with comprehension, gate policy, leakage, and red-team sections
+- `skills.md` learner memory artifact
+- two-minute demo script panel in the SwiftUI app
 - Swift and Python tests
 - formal `SPEC.md`
 - updated `ARCHITECTURE.md`
@@ -172,12 +211,14 @@ Manual native SwiftUI smoke:
 - Tutor does not provide full solution code
 - Visual trace explains the hash map concept
 - score and Learning Debt render as background feedback
+- Scoreboard shows Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval
+- `skills.md` preview appears after a checkpoint answer
 
-Manual native smoke is an app-behavior checklist. It should be rehearsed after the backend pytest and HTTP smoke checks, and recorded by the person running the macOS app.
+Manual native smoke is an app-behavior checklist. It should be rehearsed after the backend pytest and HTTP smoke checks, and recorded by the person running the macOS app. For the official two-minute demo, rehearse the SwiftUI flow with a timer and keep the final line exact: "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act."
 
 ## MCP And Codex Local Rehearsal
 
-The MCP gate is a local rehearsal surface. It is not universally pre-registered in every Codex environment; verify the active machine and active Codex session before claiming Codex is calling the LearnGuard gate.
+The MCP gate is a local technical proof surface. It is not required for the primary SwiftUI live demo and is not universally pre-registered in every Codex environment; verify the active machine and active Codex session before claiming Codex is calling the LearnGuard gate.
 
 Backend startup command:
 
@@ -233,3 +274,13 @@ codex "$(cat scripts/codex_demo_prompt.md)"
 - **Team:** minchiaHuang
 - **Event:** OpenAI Codex Hackathon Sydney, 29 April 2026
 - **Build direction:** Codex as a teacher, not as a coder
+
+Submission checklist from the event materials:
+
+- public GitHub repository link
+- short write-up, with this README as the canonical write-up target
+- strict 2-minute demo video
+- public `/r/codex` Reddit post using the required team/project/repo/video/write-up format
+- optional deployed demo link
+
+Because the event allows significant extensions to an existing project, this README keeps the original repository link visible and separates what already existed from the hackathon extension.
