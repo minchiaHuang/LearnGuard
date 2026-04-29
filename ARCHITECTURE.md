@@ -2,180 +2,248 @@
 
 ## Architecture Goal
 
-LearnGuard wraps Codex with a learning-aware action gate.
+LearnGuard is a student-first study-mode coding IDE.
 
-The gate does not only shape model text. It controls whether Codex can perform workspace actions such as reading files, proposing diffs, applying patches, running tests, and showing `git diff`.
+The student writes code in the editor. Codex powers the Tutor, but the Tutor is constrained to teach through questions, hints, and visual explanations instead of giving the final answer.
+
+The old action gate is now an internal comprehension and safety mechanism. It supports the Tutor, but it is not the main product story.
 
 ## System Context
 
 ```mermaid
 flowchart LR
-    Student["Student / Learner"] --> UI["LearnGuard Web UI"]
-    UI --> API["FastAPI Backend"]
-    API --> Coordinator["Coordinator Agent"]
+    Student["Student / Learner"] --> App["SwiftUI macOS IDE"]
 
-    Coordinator --> Solver["Solver Agent"]
-    Coordinator --> Socratic["Socratic Agent"]
-    Coordinator --> Judge["Judge Agent"]
-    Coordinator --> Explainer["Explainer Agent"]
+    subgraph AppShell["LearnGuard App Shell"]
+        Explorer["Explorer + Understanding"]
+        Editor["Editable Student Code Editor"]
+        TutorPanel["Tutor Chat"]
+        VisualPanel["Visual Trace"]
+        ScoreboardPanel["Eval Scoreboard"]
+        ScriptPanel["Demo Script"]
+        Status["Score + Runtime Status"]
+    end
 
-    Coordinator --> Gate["Codex Action Gate"]
-    Gate --> Codex["Codex Workspace Planner"]
-    Codex --> Gate
-    Gate --> Workspace["Demo Repo Workspace"]
+    App --> Explorer
+    App --> Editor
+    App --> TutorPanel
+    App --> VisualPanel
+    App --> ScoreboardPanel
+    App --> ScriptPanel
+    App --> Status
 
-    Workspace --> Pytest["pytest"]
-    Workspace --> GitDiff["git diff"]
+    App --> API["FastAPI Learning Backend"]
+    API --> Catalog["Problem Catalog"]
+    API --> Tutor["Socratic Tutor Engine"]
+    API --> Judge["Comprehension Judge"]
+    API --> Explainer["Visual Explainer"]
+    API --> Workspace["Student Code Workspace"]
+    API --> Score["Background Comprehension Tracker"]
+    API --> Evals["Eval Harness"]
+    API --> Skills["skills.md Memory"]
 
-    Gate --> Trace["Agent Trace"]
-    Judge --> Report["Learning Debt Report"]
-    Workspace --> Report
-    Trace --> Report
+    Catalog --> App
+    Workspace --> Tests["pytest Runner"]
+    Tutor --> Score
+    Judge --> Score
+    Explainer --> VisualPanel
+    Tests --> App
+    Score --> App
+    Evals --> ScoreboardPanel
+    Skills --> ScoreboardPanel
 ```
 
-## Runtime Flow
+## Target Runtime Flow
 
 ```mermaid
 sequenceDiagram
     participant Student
-    participant UI as LearnGuard UI
-    participant Coordinator
-    participant Solver
-    participant Socratic
-    participant Judge
-    participant Gate as Action Gate
-    participant Codex
-    participant Repo as Workspace Repo
-    participant Report
+    participant App as SwiftUI IDE
+    participant API as FastAPI Backend
+    participant Tutor as Socratic Tutor
+    participant Judge as Comprehension Judge
+    participant Visual as Visual Explainer
+    participant Evals as Eval Harness
+    participant Skills as skills.md Memory
+    participant Repo as Student Workspace
+    participant Tests as pytest
 
-    Student->>UI: Fix the failing Two Sum test
-    UI->>Coordinator: Start session
-    Coordinator->>Repo: Load failing test and task context
-    Coordinator->>Solver: Identify pattern and target concepts
-    Solver-->>Coordinator: hash_map, complement_lookup, solution.py
-    Coordinator->>Socratic: Generate checkpoint
-    Socratic-->>Student: Why is brute force slow?
-    Student-->>Judge: Partial answer
-    Judge-->>Coordinator: score=2/4
-    Coordinator->>Gate: Assign Level 2 permissions
-    Codex->>Gate: Request apply_patch solution.py
-    Gate-->>Codex: Blocked at Level 2
-    Codex-->>UI: Pseudocode + test strategy
-    Student-->>Judge: Improved answer
-    Judge-->>Coordinator: score=4/4
-    Coordinator->>Gate: Assign Level 4 permissions
-    Codex->>Gate: Request apply_patch solution.py
-    Gate->>Repo: Apply patch
-    Codex->>Gate: Request run pytest
-    Gate->>Repo: Run pytest
-    Codex->>Gate: Request show git diff
-    Gate->>Repo: Show git diff
-    Repo-->>Report: test result + diff summary
-    Coordinator-->>Report: trace + judge results + gate decisions
-    Report-->>UI: Learning Debt Report
+    Student->>App: Select a built-in problem
+    App->>API: Start session with optional problem_id
+    API-->>App: Session state and problem_catalog
+    Student->>App: Edit solution.py
+    Student->>App: Ask Tutor for help
+    App->>API: Send question, task, and current code context
+    API->>Tutor: Generate Socratic response
+    Tutor-->>App: Ask a concept question, not solution code
+    Student->>App: Answer the tutor question
+    App->>API: Submit learner answer
+    API->>Judge: Score demonstrated understanding
+    Judge-->>API: score, missing concepts, next hint depth
+    API->>Visual: Request trace when useful
+    Visual-->>App: Hash map trace for the concept
+    Student->>App: Improve code
+    Student->>App: Run tests
+    App->>API: Save code and run tests
+    API->>Repo: Write student solution.py
+    API->>Tests: Run Two Sum tests
+    Tests-->>App: Pass/fail output
+    Student->>App: Open Scoreboard
+    App->>API: Request evals and skills memory
+    API->>Evals: Run comprehension, gate, leakage, and red-team evals
+    API->>Skills: Render learner memory
+    Evals-->>App: Sectioned scoreboard
+    Skills-->>App: skills.md preview
 ```
+
+## Current Branch Flow
+
+The current branch has the learning backend and a SwiftUI study-mode shell with an editable `solution.py` editor, Tutor chat, Visual tab, Scoreboard tab, Script tab, and Run flow.
+
+Current implemented flow:
+
+1. SwiftUI checks FastAPI health.
+2. SwiftUI starts a LearnGuard session.
+3. Backend loads the requested built-in demo repo context, defaulting to Two Sum.
+4. SwiftUI loads the editable `solution.py` editor from session context.
+5. Student edits code and can ask the Tutor for Socratic guidance with current code context.
+6. Tutor returns questions or hints with `contains_solution: false`.
+7. Student presses Run; SwiftUI saves `solution.py` through `/api/code` and runs pytest through `/api/run`.
+8. SwiftUI renders test output, Tutor state, Visual trace, score, eval scoreboard, demo script, and `skills.md` memory.
 
 ## Components
 
 | Component | Responsibility |
 |---|---|
-| Web UI | Shows repo task, checkpoint question, agent trace, gate status, proposed diff, tests, and report. |
-| FastAPI Backend | Owns session lifecycle and exposes API routes for session start, answer submission, and report retrieval. |
-| Coordinator Agent | Orchestrates Solver, Socratic, Judge, Gate, Codex action planning, Explainer, and report generation. |
-| Solver Agent | Reads task context and identifies pattern, concepts, target file, and solution approach. |
-| Socratic Agent | Produces one targeted checkpoint question tied to the concept most likely to be outsourced. |
-| Judge Agent | Scores the learner answer against rubric items and returns missing concepts plus next action. |
-| Codex Action Gate | Enforces permissions before Codex can touch the workspace. |
-| Workspace Runner | Executes allowed local actions such as file reads, patch application, `pytest`, and `git diff`. |
-| Explainer Agent | Produces a visual trace for the algorithm or patch after the right level is unlocked. |
-| Learning Debt Report | Summarizes Codex contribution, learner understanding, blocked actions, verified concepts, weak concepts, tests, diff, and next task. |
+| SwiftUI macOS IDE | Primary demo surface. Hosts Explorer, student editor, Tutor, Visual, Scoreboard, Script, and status bar. |
+| Explorer + Understanding | Shows task files and tracked concepts. Keeps the student oriented. |
+| Student Code Editor | Target editable surface for `solution.py`. The student owns the implementation. |
+| Tutor Chat | Codex-backed Socratic tutor. Asks questions and gives hints without full solution code. |
+| Visual Explainer | Shows concrete algorithm traces such as Two Sum hash map state. |
+| Scoreboard | Shows sectioned eval proof for comprehension scoring, gate policy, leakage prevention, and red-team resistance. |
+| Demo Script | Keeps the live two-minute demo path inside the primary SwiftUI app. |
+| FastAPI Backend | Owns session state, task context, scoring, tutor responses, visual traces, evals, memory, and test execution. |
+| Problem Catalog | Provides local built-in tasks for repeatable onboarding and smoke rehearsal. |
+| Comprehension Judge | Scores learner answers and identifies missing concepts. |
+| Background Tracker | Maintains score, concepts, hint depth, and Learning Debt state. |
+| skills.md Memory | Renders demonstrated understanding, weak concepts, Learning Debt trend, and next task as markdown. |
+| Student Workspace | Holds the demo repo files used by the student editor and test runner. |
+| pytest Runner | Runs tests against the student's code and returns output. |
+| Web Fallback | Existing browser demo retained as a fallback surface, not the primary product UI. |
+| MCP Server | Optional Codex integration surface for local gate/tool experiments. |
 
-## Codex Action Permission Model
+## Source Boundaries
 
-| Level | Name | Allowed Actions | Blocked Actions |
-|---:|---|---|---|
-| 0 | Question Only | `ask_checkpoint` | `list_files`, `read_file`, `write_file`, `run_command`, `show_diff` |
-| 1 | Read-Only Orientation | `list_files`, `read_problem`, `read_test`, `name_pattern` | `read_solution`, `write_file`, `run_command`, `show_diff` |
-| 2 | Plan + Test Strategy | `read_problem`, `read_test`, `read_solution`, `generate_pseudocode`, `generate_test_plan` | `write_file`, `apply_patch`, `run_command`, `show_diff` |
-| 3 | Diff Proposal | `read_file`, `propose_diff`, `explain_diff` | `write_file`, `apply_patch`, `run_command` |
-| 4 | Workspace Unlock | `read_file`, `write_file`, `apply_patch`, `run_command`, `show_diff` | None |
+Only this `LearnGuard/` directory is the product repository. Adjacent hackathon folders are evidence or design sources:
 
-## Action Gate Contract
+| Path | Boundary |
+|---|---|
+| `../style/` | Design prototype/reference. It can inform SwiftUI polish, but it is not runtime source and is not copied or moved into this repo for the current branch. |
+| `../test/` | Separate historical git repo. It should not be staged, merged, or treated as part of this product repo. |
+| `../OpenAI Codex Hackathon - Sydney · Luma.pdf` | Event rules and submission requirements source. |
+| `../openai_codex_hackathon_winning_projects.xlsx` | Research source for judging patterns and positioning. |
 
-Each Codex workspace request is represented as a structured action:
+## API Surface
 
-```json
-{
-  "type": "apply_patch",
-  "path": "solution.py",
-  "reason": "Implement one-pass hash map lookup for Two Sum"
-}
-```
+Current API:
 
-The gate returns a structured decision:
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Check backend availability. |
+| `POST /api/session` | Start an isolated learning session. It defaults to Two Sum, accepts optional `problem_id`, and returns `problem_catalog`. |
+| `GET /api/problems` | Return public metadata for the built-in problem catalog. |
+| `GET /api/sessions` | List persisted local session summaries for history and replay. |
+| `GET /api/session/{session_id}` | Read current session state. |
+| `POST /api/answer` | Submit learner answer and receive score, hint, report, and visual trace state. |
+| `GET /api/evals` | Return flat legacy cases plus sectioned Comprehension, Gate Policy, Leakage, and Red-team eval results with judge mode metadata. |
+| `GET /api/redteam` | Return focused red-team gate policy results. |
+| `GET /api/skills` | Return generated learner memory artifact, markdown, and structured summary. |
+| `GET /api/skills.md` | Return generated learner memory markdown as `text/markdown`. |
 
-```json
-{
-  "allowed": false,
-  "level": 2,
-  "action": {
-    "type": "apply_patch",
-    "path": "solution.py"
-  },
-  "violations": [
-    "action blocked at level 2: apply_patch"
-  ]
-}
-```
+Student editor API contract:
 
-## Logical Data Model
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/code` | Save the student's current `solution.py`. |
+| `POST /api/run` | Run tests against the student's current code. |
+| `POST /api/tutor` | Ask the Tutor using the task, current code, and learner message. |
 
-The hackathon version can run in memory or write JSON files. The ERD below describes the persistence-ready model.
+The code endpoint accepts only session-scoped student files, starting with `solution.py`. Invalid paths are rejected before touching the workspace.
+
+The run endpoint executes pytest against the saved student code and returns pass/fail output. It validates the student's work; it does not apply a Codex patch.
+
+The answer endpoint scores understanding and may update score, hint depth, trace state, and report state. It must not persist code into the student workspace; `POST /api/code` is the only API that saves `solution.py`.
+
+The tutor endpoint returns Socratic guidance with `contains_solution: false`. It may ask a question, point to a misconception, or suggest a trace, but it must not return a full solution implementation.
+
+All three endpoints return `{"detail": "session not found"}` for missing sessions.
+
+MCP stdio exposes the same policy concepts for local Codex rehearsal. `learnguard_judge_answer` accepts an optional `problem_id`, and the gate/execute tools accept `problem_id` so the demo can prove policy behavior on built-in problems beyond Two Sum.
+
+## Smoke Proof Boundary
+
+Automated smoke is the HTTP script in `scripts/smoke_demo.py`. It proves the backend contract against a running FastAPI server and restores `demo_repo/solution.py` to the exact content present before the smoke run.
+
+Manual native smoke is separate. It verifies the SwiftUI macOS app behavior by inspection: offline state, health check, Start Session, editable code, Tutor, Visual trace, Run, Scoreboard, Script, score, `skills.md`, and Learning Debt rendering. The manual smoke does not replace the automated API and HTTP smoke checks.
+
+## Tutor And Scoring Policy
+
+The Tutor is allowed to:
+
+- ask questions
+- provide hints
+- identify misconceptions
+- request a trace
+- explain a concept in plain language
+
+The Tutor is not allowed to:
+
+- paste a full implementation
+- apply a patch for the student
+- turn the interaction into answer copying
+
+The comprehension tracker controls hint depth. It can surface a score or level in the status bar, but it should stay in the background of the product story.
+
+## Data Model
+
+The hackathon version can stay in memory. The persistence-ready model is:
 
 ```mermaid
 erDiagram
-    STUDENT_PROFILE ||--o{ LEARNING_SESSION : starts
-    REPO_TASK ||--o{ LEARNING_SESSION : uses
-    LEARNING_SESSION ||--o{ AGENT_TRACE_EVENT : records
+    LEARNING_SESSION ||--o{ STUDENT_CODE_SNAPSHOT : records
+    LEARNING_SESSION ||--o{ TUTOR_MESSAGE : contains
     LEARNING_SESSION ||--o{ JUDGE_EVALUATION : contains
-    LEARNING_SESSION ||--o{ GATE_DECISION : contains
-    GATE_DECISION ||--o{ WORKSPACE_ACTION : evaluates
+    LEARNING_SESSION ||--o{ TEST_RUN : runs
     LEARNING_SESSION ||--|| LEARNING_DEBT_REPORT : produces
     LEARNING_DEBT_REPORT ||--o{ CONCEPT_STATUS : summarizes
+    REPO_TASK ||--o{ LEARNING_SESSION : uses
     CONCEPT ||--o{ CONCEPT_STATUS : appears_in
     REPO_TASK ||--o{ TASK_CONCEPT : requires
     CONCEPT ||--o{ TASK_CONCEPT : maps_to
 
-    STUDENT_PROFILE {
-        string student_id PK
-        string display_name
+    LEARNING_SESSION {
+        string session_id PK
+        string task_id FK
+        int comprehension_score
+        string status
+        datetime started_at
+        datetime updated_at
+    }
+
+    STUDENT_CODE_SNAPSHOT {
+        string snapshot_id PK
+        string session_id FK
+        string path
+        string content
         datetime created_at
     }
 
-    REPO_TASK {
-        string task_id PK
-        string title
-        string target_file
-        string test_file
-        string difficulty
-    }
-
-    LEARNING_SESSION {
-        string session_id PK
-        string student_id FK
-        string task_id FK
-        int autonomy_level
-        string status
-        datetime started_at
-        datetime completed_at
-    }
-
-    AGENT_TRACE_EVENT {
-        string event_id PK
+    TUTOR_MESSAGE {
+        string message_id PK
         string session_id FK
-        string agent_name
-        string status
-        json payload
+        string role
+        string content
+        boolean contains_solution
         datetime created_at
     }
 
@@ -185,26 +253,16 @@ erDiagram
         string answer_text
         int score
         int max_score
-        json rubric_scores
         json missing_concepts
     }
 
-    GATE_DECISION {
-        string decision_id PK
+    TEST_RUN {
+        string test_run_id PK
         string session_id FK
-        int autonomy_level
-        boolean allowed
-        json violations
-        datetime created_at
-    }
-
-    WORKSPACE_ACTION {
-        string action_id PK
-        string decision_id FK
-        string action_type
-        string path
-        string status
-        json result
+        string command
+        int exit_code
+        string stdout
+        string stderr
     }
 
     LEARNING_DEBT_REPORT {
@@ -214,8 +272,6 @@ erDiagram
         string student_understanding
         string learning_debt
         string next_task_id
-        json test_result
-        json git_diff_summary
     }
 
     CONCEPT {
@@ -223,49 +279,34 @@ erDiagram
         string name
         string category
     }
-
-    CONCEPT_STATUS {
-        string concept_status_id PK
-        string report_id FK
-        string concept_id FK
-        string status
-        string evidence
-    }
-
-    TASK_CONCEPT {
-        string task_concept_id PK
-        string task_id FK
-        string concept_id FK
-        string importance
-    }
-```
-
-## Learning Debt Calculation
-
-The hackathon version should keep this simple and explainable.
-
-```text
-Codex contribution:
-- Low: Codex only gave hints or pattern names.
-- Medium: Codex proposed pseudocode or a diff.
-- High: Codex applied a patch and ran tests.
-
-Student demonstrated understanding:
-- Low: 0-1 rubric items passed.
-- Medium: 2-3 rubric items passed.
-- High: 4+ rubric items passed.
-
-Learning Debt:
-- Low: Codex contribution is not higher than demonstrated understanding.
-- Medium: Codex contribution is one level higher than demonstrated understanding.
-- High: Codex contribution is two or more levels higher than demonstrated understanding.
 ```
 
 ## Demo Acceptance Criteria
 
-- The repo starts with a failing `pytest`.
-- LearnGuard visibly blocks `apply_patch solution.py` before the learner unlocks enough understanding.
-- The agent trace shows Solver, Socratic, Judge, Gate, Codex action request, blocked action, patch, test, and diff.
-- The final report includes Learning Debt, verified concepts, weak concepts, blocked actions, `pytest` output, and `git diff` summary.
-- The demo can be explained in 2 minutes without requiring a teacher dashboard or persistent database.
+- The product can be explained as "Codex as a teacher, not as a coder."
+- The primary UI shows a student editor, Tutor tab, and Visual tab.
+- The Scoreboard shows comprehension, gate policy, leakage, and red-team proof.
+- The Script tab supports the strict two-minute demo path.
+- The student remains responsible for the code.
+- The Tutor never gives a full solution.
+- The Visual trace explains the algorithm concept.
+- Test output validates the student's code.
+- Score and Learning Debt exist as background feedback, with `skills.md` as the visible learner memory artifact.
 
+## Production Architecture Extensions
+
+The hackathon architecture is intentionally local-first and in-memory. A production LearnGuard platform would add these components without changing the core student-first product model:
+
+| Component | Production responsibility |
+|---|---|
+| Auth service | Own learner identity, roles, and session access. |
+| Session database | Persist learner progress, code snapshots, tutor messages, test runs, and reports. |
+| Problem catalog | Manage multiple tasks, curricula, rubrics, fixtures, and concept maps. |
+| Sandbox runner | Execute untrusted student code in an isolated environment with time, file, and network limits. |
+| Codex tutor orchestrator | Route task context, code context, policy constraints, and hint depth into adaptive tutor calls. |
+| Policy monitor | Detect and block full-solution leakage or unsafe workspace actions. |
+| Evaluation history store | Track understanding over time across tasks and concepts. |
+| Instructor dashboard | Let teachers review attempts, learning debt, hint usage, and test history. |
+| Audit and privacy layer | Record execution and tutor events while enforcing retention and learner-data controls. |
+
+Production flow would replace the local demo workspace with a scoped workspace service, replace in-memory sessions with durable storage, and run student code in a sandbox. The Tutor would remain constrained: Codex teaches through questions, hints, and visual explanation instead of producing final solution code.

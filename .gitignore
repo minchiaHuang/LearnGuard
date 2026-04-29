@@ -7,6 +7,9 @@ venv/
 *.egg-info/
 dist/
 build/
+.build/
+.swiftpm/
 .pytest_cache/
 output/
 node_modules/
+.learnguard_runtime/

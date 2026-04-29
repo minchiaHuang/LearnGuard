@@ -58,6 +58,16 @@ CONCEPT_GRAPH: dict[str, dict[str, Any]] = {
         "category": "hash map",
         "next": [],
     },
+    "running_minimum": {
+        "name": "Running minimum",
+        "category": "greedy",
+        "next": ["single_pass"],
+    },
+    "best_so_far_state": {
+        "name": "Best-so-far state",
+        "category": "greedy",
+        "next": [],
+    },
     "sliding_window": {
         "name": "Sliding window",
         "category": "two pointers",
@@ -78,6 +88,26 @@ CONCEPT_GRAPH: dict[str, dict[str, Any]] = {
         "category": "two pointers",
         "next": [],
     },
+    "bounds_checks": {
+        "name": "Bounds checks",
+        "category": "iteration",
+        "next": [],
+    },
+    "leftover_suffix": {
+        "name": "Leftover suffix handling",
+        "category": "iteration",
+        "next": [],
+    },
+    "in_place_mutation": {
+        "name": "In-place mutation",
+        "category": "arrays",
+        "next": [],
+    },
+    "stable_order": {
+        "name": "Stable order",
+        "category": "arrays",
+        "next": [],
+    },
 }
 
 RUBRIC_TO_CONCEPT = {
@@ -85,6 +115,26 @@ RUBRIC_TO_CONCEPT = {
     "quantifies comparisons as n^2 or n*(n-1)/2": "comparison_count",
     "explains why brute force is slow": "brute_force_complexity",
     "connects improvement to hash map complement lookup": "complement_lookup",
+    "mentions comparing values for duplicates": "pair_enumeration",
+    "quantifies comparisons as n^2 or repeated scans": "comparison_count",
+    "connects improvement to a set of seen values": "hash_set",
+    "explains membership lookup avoids pair scanning": "membership_test",
+    "mentions character frequency counting": "frequency_count",
+    "explains both strings need matching counts": "frequency_count",
+    "uses a hash map or counter for counts": "hash_map",
+    "states the scan is linear": "single_pass",
+    "mentions checking buy/sell pairs is quadratic": "comparison_count",
+    "tracks the lowest price seen so far": "running_minimum",
+    "computes current price minus lowest price as profit": "greedy",
+    "updates best profit in one linear pass": "best_so_far_state",
+    "mentions alternating characters from both strings": "two_pointers",
+    "uses an index or two-pointer scan": "two_pointers",
+    "handles the leftover suffix from the longer string": "leftover_suffix",
+    "states the scan is linear in combined length": "single_pass",
+    "mentions a write pointer or next non-zero slot": "two_pointers",
+    "preserves non-zero order by copying values forward": "stable_order",
+    "fills the remaining suffix with zeroes": "in_place_mutation",
+    "states the algorithm is in-place and linear": "in_place_mutation",
 }
 
 TWO_SUM_CORE_CONCEPTS = {
