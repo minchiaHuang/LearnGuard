@@ -6,7 +6,7 @@
 
 Pitch:
 
-> Codex can write any LeetCode solution in 5 seconds. LearnGuard puts Codex in study mode — it teaches you how to write it yourself. And we can prove the gate never breaks.
+> Codex can write any LeetCode solution in 5 seconds. LearnGuard makes student understanding the permission layer: no understanding, no Codex action.
 
 Original repository: https://github.com/minchiaHuang/LearnGuard
 
@@ -16,7 +16,7 @@ Original repository: https://github.com/minchiaHuang/LearnGuard
 
 For the OpenAI Codex Hackathon, the prior LearnGuard learning backend was extended with:
 
-- **Codex MCP gate rehearsal** - the local LearnGuard MCP server exposes guarded workspace tools for the Codex demo. Treat Codex CLI registration as environment-specific until verified on the demo machine. Run the prompt only after confirming the LearnGuard MCP tools are available: `codex "$(cat scripts/codex_demo_prompt.md)"`
+- **Codex MCP gate rehearsal** - the local LearnGuard MCP server exposes guarded workspace tools for the Codex demo. Treat Codex CLI registration as environment-specific until verified on the demo machine. Run the local preflight first: `.venv/bin/python scripts/mcp_preflight.py`
 - **Eval Scoreboard** - four judging panels for Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval. The Red-team section includes 10 attack vectors with **8/8 attacks blocked, 2/2 legitimate actions passed, Precision: 100%.**
 - **Native macOS SwiftUI study shell** - Explorer, code context, Tutor, Visual trace, Scoreboard, and `skills.md` memory preview
 - **Codex study-mode Tutor** - Socratic prompts that guide the learner instead of pasting a full answer
@@ -77,7 +77,7 @@ The student is the main actor:
 5. The student improves the code.
 6. Run validates the student's own solution.
 
-The local LearnGuard MCP gate can evaluate guarded workspace actions against the student's current comprehension level. When Codex CLI is explicitly configured to use that MCP server, the demo prompt exercises the same gate from Codex. The SwiftUI Scoreboard proves the gate policy holds, while the `skills.md` preview turns Learning Debt into reusable learner memory.
+The local LearnGuard MCP gate evaluates guarded workspace actions against the student's current comprehension level. When Codex CLI is explicitly configured to use that MCP server, the demo prompt exercises the gate from Codex itself. The SwiftUI Scoreboard proves the policy holds, while the `skills.md` preview turns Learning Debt into reusable learner memory.
 
 ## Product Maturity
 
@@ -214,7 +214,7 @@ Manual native SwiftUI smoke:
 - Scoreboard shows Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval
 - `skills.md` preview appears after a checkpoint answer
 
-Manual native smoke is an app-behavior checklist. It should be rehearsed after the backend pytest and HTTP smoke checks, and recorded by the person running the macOS app. For the official two-minute demo, rehearse the SwiftUI flow with a timer and keep the final line exact: "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act."
+Manual native smoke is an app-behavior checklist. It should be rehearsed after the backend pytest, HTTP smoke checks, and MCP preflight. For the official two-minute demo, rehearse the SwiftUI flow with a timer and keep the final line exact: "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act."
 
 ## MCP And Codex Local Rehearsal
 
@@ -232,6 +232,12 @@ Backend smoke commands:
 .venv/bin/python -m pytest tests -q
 .venv/bin/python scripts/smoke_demo.py --base-url http://127.0.0.1:8788 --problem-id two_sum
 .venv/bin/python scripts/smoke_demo.py --base-url http://127.0.0.1:8788 --problem-id contains_duplicate
+```
+
+MCP stdio preflight:
+
+```bash
+.venv/bin/python scripts/mcp_preflight.py
 ```
 
 MCP server command for Codex stdio registration:
@@ -256,12 +262,14 @@ After Codex starts with that local config, confirm the LearnGuard tools are visi
 - `learnguard_start_session`
 - `learnguard_gate_action`
 - `learnguard_execute_action`
+- `learnguard_codex_preflight`
 
 Practical confirmation sequence inside Codex:
 
-1. Call `learnguard_start_session` with `{"problem_id":"two_sum","reset_demo_repo":false}` and confirm it returns repo context, a solver plan, a checkpoint, and policy levels.
-2. Call `learnguard_gate_action` with an intentionally blocked action such as `{"autonomy_level":0,"action":{"type":"apply_patch","path":"solution.py"},"problem_id":"two_sum"}` and confirm the decision is blocked.
-3. Call `learnguard_execute_action` with `execute:false` for an allowed Level 4 action and confirm it returns a gate decision without mutating the workspace.
+1. Call `learnguard_codex_preflight` with `{"problem_id":"two_sum"}` and confirm `all_passed=true` and `mutates_files=false`.
+2. Call `learnguard_start_session` with `{"problem_id":"two_sum","reset_demo_repo":true}` and confirm it returns repo context, a solver plan, a checkpoint, and policy levels.
+3. Call `learnguard_gate_action` with an intentionally blocked action such as `{"autonomy_level":0,"action":{"type":"apply_patch","path":"solution.py"},"problem_id":"two_sum"}` and confirm the decision is blocked.
+4. Call `learnguard_execute_action` with `execute:false` for an allowed Level 4 action and confirm it returns a gate decision without mutating the workspace.
 
 Only after those checks should the demo prompt be run:
 
