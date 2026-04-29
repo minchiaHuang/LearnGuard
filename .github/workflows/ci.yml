@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  python:
+    name: Python validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pytest
+        run: .venv/bin/python -m pytest tests -q
+
+      - name: Run HTTP smoke
+        run: |
+          .venv/bin/python -m uvicorn learnguard.app:app --host 127.0.0.1 --port 8791 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for attempt in {1..30}; do
+            if .venv/bin/python -c 'import sys, urllib.request; response = urllib.request.urlopen("http://127.0.0.1:8791/health", timeout=1); sys.exit(0 if response.status == 200 else 1)'; then
+              break
+            fi
+
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "uvicorn exited before becoming healthy"
+              wait "$SERVER_PID"
+              exit 1
+            fi
+
+            if [ "$attempt" -eq 30 ]; then
+              echo "uvicorn did not become healthy in time"
+              exit 1
+            fi
+
+            sleep 1
+          done
+
+          .venv/bin/python scripts/smoke_demo.py --base-url http://127.0.0.1:8791 --problem-id two_sum
+          .venv/bin/python scripts/smoke_demo.py --base-url http://127.0.0.1:8791 --problem-id contains_duplicate
+
+  swift:
+    name: Swift validation
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run Swift tests
+        run: swift test

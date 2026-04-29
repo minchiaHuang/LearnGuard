@@ -23,6 +23,15 @@ struct LearnGuardAPI {
         try await send(path: "/api/session", method: "POST")
     }
 
+    func listSessions() async throws -> SessionHistoryResponse {
+        try await send(path: "/api/sessions", method: "GET")
+    }
+
+    func getSession(id: String) async throws -> LearnGuardSession {
+        let encodedId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await send(path: "/api/session/\(encodedId)", method: "GET")
+    }
+
     func saveCode(sessionId: String, path: String, content: String) async throws -> CodeSaveResponse {
         let request = CodeSaveRequest(sessionId: sessionId, path: path, content: content)
         return try await send(

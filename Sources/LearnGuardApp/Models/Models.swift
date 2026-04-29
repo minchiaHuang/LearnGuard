@@ -151,6 +151,47 @@ struct LearnGuardSession: Decodable {
     let report: LearningReport?
 }
 
+struct SessionHistoryResponse: Decodable {
+    let sessions: [SessionSummary]
+}
+
+struct SessionSummary: Decodable, Identifiable {
+    let sessionId: String
+    let problemId: String?
+    let taskId: String?
+    let task: String?
+    let status: String?
+    let autonomyLevel: Int?
+    let autonomyLevelName: String?
+    let attemptsCount: Int?
+    let latestScore: Int?
+    let latestMax: Int?
+    let learningDebt: String?
+    let updatedAt: String?
+    let createdAt: String?
+
+    var id: String { sessionId }
+
+    var title: String {
+        if let task, !task.isEmpty {
+            return task
+        }
+        if let taskId, !taskId.isEmpty {
+            return taskId
+        }
+        return "Session"
+    }
+
+    var detailText: String {
+        let level = autonomyLevel.map { "L\($0)" } ?? "L0"
+        if let latestScore, let latestMax {
+            return "\(level) - \(latestScore)/\(latestMax)"
+        }
+        let count = attemptsCount ?? 0
+        return count == 1 ? "\(level) - 1 attempt" : "\(level) - \(count) attempts"
+    }
+}
+
 struct RepoContext: Decodable {
     let targetFile: String?
     let testFile: String?

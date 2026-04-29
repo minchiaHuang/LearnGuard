@@ -48,6 +48,26 @@ class SessionStore:
             return None
         return json.loads(str(row["payload"]))
 
+    def list_sessions(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                select session_id, problem_id, payload, created_at, updated_at
+                from learning_sessions
+                order by updated_at desc
+                """
+            ).fetchall()
+        return [
+            {
+                "session_id": str(row["session_id"]),
+                "problem_id": str(row["problem_id"]),
+                "payload": json.loads(str(row["payload"])),
+                "created_at": str(row["created_at"]),
+                "updated_at": str(row["updated_at"]),
+            }
+            for row in rows
+        ]
+
     def list_session_ids(self) -> list[str]:
         with self._connect() as connection:
             rows = connection.execute(
