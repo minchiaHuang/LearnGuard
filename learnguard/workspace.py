@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -38,6 +39,11 @@ def ensure_demo_repo(
     """
     spec = get_problem_spec(problem_id)
     repo_root = _repo_root_for(session_id, problem_id)
+    if reset and session_id is not None and repo_root.exists():
+        if repo_root.is_symlink() or repo_root.is_file():
+            repo_root.unlink()
+        else:
+            shutil.rmtree(repo_root)
     repo_root.mkdir(parents=True, exist_ok=True)
 
     for relative_path, content in spec["files"].items():

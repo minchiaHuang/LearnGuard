@@ -6,6 +6,7 @@ struct FileTreeView: View {
     var body: some View {
         VStack(spacing: 0) {
             explorerSection
+            sessionsSection
             understandingSection
             Spacer(minLength: 0)
             learningDebtSection
@@ -61,6 +62,46 @@ struct FileTreeView: View {
             conceptRow("Hash map O(n)", progress: conceptProgress(for: "hash"), color: LGStyle.secondary, symbol: "lock.fill")
         }
         .padding(.vertical, 14)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(LGStyle.border)
+                .frame(height: 1)
+        }
+    }
+
+    private var sessionsSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                sidebarTitle("Sessions")
+                    .padding(.bottom, 0)
+                Spacer()
+                Button {
+                    Task { await state.loadSessionHistory() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(LGStyle.secondary)
+                .disabled(state.isBusy)
+                .help("Refresh sessions")
+                .padding(.trailing, 12)
+            }
+            .padding(.bottom, 4)
+
+            if state.sessionHistory.isEmpty {
+                Text("No saved sessions")
+                    .font(.system(size: 12))
+                    .foregroundStyle(LGStyle.secondary)
+                    .padding(.horizontal, 12)
+                    .frame(height: 24, alignment: .leading)
+            } else {
+                ForEach(state.sessionHistory.prefix(5)) { summary in
+                    sessionRow(summary)
+                }
+            }
+        }
+        .padding(.vertical, 12)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(LGStyle.border)
@@ -137,6 +178,36 @@ struct FileTreeView: View {
             .padding(.horizontal, 6)
         }
         .buttonStyle(.plain)
+    }
+
+    private func sessionRow(_ summary: SessionSummary) -> some View {
+        Button {
+            Task { await state.replaySession(id: summary.sessionId) }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: state.sessionId == summary.sessionId ? "play.circle.fill" : "clock.arrow.circlepath")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(state.sessionId == summary.sessionId ? LGStyle.accent : LGStyle.secondary)
+                    .frame(width: 14)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(summary.title)
+                        .font(.system(size: 12, weight: state.sessionId == summary.sessionId ? .medium : .regular))
+                        .lineLimit(1)
+                    Text(summary.detailText)
+                        .font(.system(size: 10))
+                        .foregroundStyle(LGStyle.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(state.sessionId == summary.sessionId ? LGStyle.accent : LGStyle.secondary)
+            .padding(.horizontal, 10)
+            .frame(height: 34)
+            .background(state.sessionId == summary.sessionId ? LGStyle.accent.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            .padding(.horizontal, 6)
+        }
+        .buttonStyle(.plain)
+        .disabled(state.isBusy)
     }
 
     private func conceptRow(_ title: String, progress: Double, color: Color, symbol: String) -> some View {

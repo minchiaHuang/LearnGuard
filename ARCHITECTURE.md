@@ -114,7 +114,8 @@ Current API:
 | Endpoint | Purpose |
 |---|---|
 | `GET /health` | Check backend availability. |
-| `POST /api/session` | Start/reset the Two Sum learning session. |
+| `POST /api/session` | Start an isolated learning session. It defaults to Two Sum and may accept an optional `problem_id` for another built-in problem. |
+| `GET /api/sessions` | List persisted local session summaries for history and replay. |
 | `GET /api/session/{session_id}` | Read current session state. |
 | `POST /api/answer` | Submit learner answer and receive score, hint, report, and visual trace state. |
 | `GET /api/evals` | Run deterministic judge eval cases. |
