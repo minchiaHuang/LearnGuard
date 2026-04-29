@@ -19,6 +19,8 @@ flowchart LR
         Editor["Editable Student Code Editor"]
         TutorPanel["Tutor Chat"]
         VisualPanel["Visual Trace"]
+        ScoreboardPanel["Eval Scoreboard"]
+        ScriptPanel["Demo Script"]
         Status["Score + Runtime Status"]
     end
 
@@ -26,21 +28,29 @@ flowchart LR
     App --> Editor
     App --> TutorPanel
     App --> VisualPanel
+    App --> ScoreboardPanel
+    App --> ScriptPanel
     App --> Status
 
     App --> API["FastAPI Learning Backend"]
+    API --> Catalog["Problem Catalog"]
     API --> Tutor["Socratic Tutor Engine"]
     API --> Judge["Comprehension Judge"]
     API --> Explainer["Visual Explainer"]
     API --> Workspace["Student Code Workspace"]
     API --> Score["Background Comprehension Tracker"]
+    API --> Evals["Eval Harness"]
+    API --> Skills["skills.md Memory"]
 
+    Catalog --> App
     Workspace --> Tests["pytest Runner"]
     Tutor --> Score
     Judge --> Score
     Explainer --> VisualPanel
     Tests --> App
     Score --> App
+    Evals --> ScoreboardPanel
+    Skills --> ScoreboardPanel
 ```
 
 ## Target Runtime Flow
@@ -53,9 +63,14 @@ sequenceDiagram
     participant Tutor as Socratic Tutor
     participant Judge as Comprehension Judge
     participant Visual as Visual Explainer
+    participant Evals as Eval Harness
+    participant Skills as skills.md Memory
     participant Repo as Student Workspace
     participant Tests as pytest
 
+    Student->>App: Select a built-in problem
+    App->>API: Start session with optional problem_id
+    API-->>App: Session state and problem_catalog
     Student->>App: Edit solution.py
     Student->>App: Ask Tutor for help
     App->>API: Send question, task, and current code context
@@ -73,39 +88,60 @@ sequenceDiagram
     API->>Repo: Write student solution.py
     API->>Tests: Run Two Sum tests
     Tests-->>App: Pass/fail output
+    Student->>App: Open Scoreboard
+    App->>API: Request evals and skills memory
+    API->>Evals: Run comprehension, gate, leakage, and red-team evals
+    API->>Skills: Render learner memory
+    Evals-->>App: Sectioned scoreboard
+    Skills-->>App: skills.md preview
 ```
 
 ## Current Branch Flow
 
-The current branch has the learning backend and a SwiftUI study-mode shell with an editable `solution.py` editor, Tutor chat, Visual tab, and Run flow.
+The current branch has the learning backend and a SwiftUI study-mode shell with an editable `solution.py` editor, Tutor chat, Visual tab, Scoreboard tab, Script tab, and Run flow.
 
 Current implemented flow:
 
 1. SwiftUI checks FastAPI health.
 2. SwiftUI starts a LearnGuard session.
-3. Backend loads the Two Sum demo repo context.
+3. Backend loads the requested built-in demo repo context, defaulting to Two Sum.
 4. SwiftUI loads the editable `solution.py` editor from session context.
 5. Student edits code and can ask the Tutor for Socratic guidance with current code context.
 6. Tutor returns questions or hints with `contains_solution: false`.
 7. Student presses Run; SwiftUI saves `solution.py` through `/api/code` and runs pytest through `/api/run`.
-8. SwiftUI renders test output, Tutor state, Visual trace, and score.
+8. SwiftUI renders test output, Tutor state, Visual trace, score, eval scoreboard, demo script, and `skills.md` memory.
 
 ## Components
 
 | Component | Responsibility |
 |---|---|
-| SwiftUI macOS IDE | Primary demo surface. Hosts Explorer, student editor, Tutor, Visual tab, and status bar. |
+| SwiftUI macOS IDE | Primary demo surface. Hosts Explorer, student editor, Tutor, Visual, Scoreboard, Script, and status bar. |
 | Explorer + Understanding | Shows task files and tracked concepts. Keeps the student oriented. |
 | Student Code Editor | Target editable surface for `solution.py`. The student owns the implementation. |
 | Tutor Chat | Codex-backed Socratic tutor. Asks questions and gives hints without full solution code. |
 | Visual Explainer | Shows concrete algorithm traces such as Two Sum hash map state. |
-| FastAPI Backend | Owns session state, task context, scoring, tutor responses, visual traces, and test execution. |
+| Scoreboard | Shows sectioned eval proof for comprehension scoring, gate policy, leakage prevention, and red-team resistance. |
+| Demo Script | Keeps the live two-minute demo path inside the primary SwiftUI app. |
+| FastAPI Backend | Owns session state, task context, scoring, tutor responses, visual traces, evals, memory, and test execution. |
+| Problem Catalog | Provides local built-in tasks for repeatable onboarding and smoke rehearsal. |
 | Comprehension Judge | Scores learner answers and identifies missing concepts. |
 | Background Tracker | Maintains score, concepts, hint depth, and Learning Debt state. |
+| skills.md Memory | Renders demonstrated understanding, weak concepts, Learning Debt trend, and next task as markdown. |
 | Student Workspace | Holds the demo repo files used by the student editor and test runner. |
 | pytest Runner | Runs tests against the student's code and returns output. |
 | Web Fallback | Existing browser demo retained as a fallback surface, not the primary product UI. |
 | MCP Server | Optional Codex integration surface for local gate/tool experiments. |
+
+## Source Boundaries
+
+Only this `LearnGuard/` directory is the product repository. Adjacent hackathon folders are evidence or design sources:
+
+| Path | Boundary |
+|---|---|
+| `../style/` | Design prototype/reference. It can inform SwiftUI polish, but it is not runtime source and is not copied or moved into this repo for the current branch. |
+| `../test/` | Separate historical git repo. It should not be staged, merged, or treated as part of this product repo. |
+| `../OpenAI Codex Hackathon - Sydney · Luma.pdf` | Event rules and submission requirements source. |
+| `../openai_codex_hackathon_winning_projects.xlsx` | Research source for judging patterns and positioning. |
 
 ## API Surface
 
@@ -114,11 +150,15 @@ Current API:
 | Endpoint | Purpose |
 |---|---|
 | `GET /health` | Check backend availability. |
-| `POST /api/session` | Start an isolated learning session. It defaults to Two Sum and may accept an optional `problem_id` for another built-in problem. |
+| `POST /api/session` | Start an isolated learning session. It defaults to Two Sum, accepts optional `problem_id`, and returns `problem_catalog`. |
+| `GET /api/problems` | Return public metadata for the built-in problem catalog. |
 | `GET /api/sessions` | List persisted local session summaries for history and replay. |
 | `GET /api/session/{session_id}` | Read current session state. |
 | `POST /api/answer` | Submit learner answer and receive score, hint, report, and visual trace state. |
-| `GET /api/evals` | Run deterministic judge eval cases. |
+| `GET /api/evals` | Return flat legacy cases plus sectioned Comprehension, Gate Policy, Leakage, and Red-team eval results with judge mode metadata. |
+| `GET /api/redteam` | Return focused red-team gate policy results. |
+| `GET /api/skills` | Return generated learner memory artifact, markdown, and structured summary. |
+| `GET /api/skills.md` | Return generated learner memory markdown as `text/markdown`. |
 
 Student editor API contract:
 
@@ -138,11 +178,13 @@ The tutor endpoint returns Socratic guidance with `contains_solution: false`. It
 
 All three endpoints return `{"detail": "session not found"}` for missing sessions.
 
+MCP stdio exposes the same policy concepts for local Codex rehearsal. `learnguard_judge_answer` accepts an optional `problem_id`, and the gate/execute tools accept `problem_id` so the demo can prove policy behavior on built-in problems beyond Two Sum.
+
 ## Smoke Proof Boundary
 
 Automated smoke is the HTTP script in `scripts/smoke_demo.py`. It proves the backend contract against a running FastAPI server and restores `demo_repo/solution.py` to the exact content present before the smoke run.
 
-Manual native smoke is separate. It verifies the SwiftUI macOS app behavior by inspection: offline state, health check, Start Session, editable code, Tutor, Visual trace, Run, score, and Learning Debt rendering. The manual smoke does not replace the automated API and HTTP smoke checks.
+Manual native smoke is separate. It verifies the SwiftUI macOS app behavior by inspection: offline state, health check, Start Session, editable code, Tutor, Visual trace, Run, Scoreboard, Script, score, `skills.md`, and Learning Debt rendering. The manual smoke does not replace the automated API and HTTP smoke checks.
 
 ## Tutor And Scoring Policy
 
@@ -243,11 +285,13 @@ erDiagram
 
 - The product can be explained as "Codex as a teacher, not as a coder."
 - The primary UI shows a student editor, Tutor tab, and Visual tab.
+- The Scoreboard shows comprehension, gate policy, leakage, and red-team proof.
+- The Script tab supports the strict two-minute demo path.
 - The student remains responsible for the code.
 - The Tutor never gives a full solution.
 - The Visual trace explains the algorithm concept.
 - Test output validates the student's code.
-- Score and Learning Debt exist as background feedback, not the main story.
+- Score and Learning Debt exist as background feedback, with `skills.md` as the visible learner memory artifact.
 
 ## Production Architecture Extensions
 
