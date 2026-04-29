@@ -160,9 +160,15 @@ def run_preflight(*, timeout: float) -> list[str]:
             "learnguard_judge_answer",
             "learnguard_gate_action",
             "learnguard_execute_action",
+            "learnguard_codex_preflight",
         }
         require(expected_tools.issubset(tool_names), f"missing tools: {sorted(expected_tools - tool_names)}")
         transcript.append(f"tools/list: ok ({len(tool_names)} tools)")
+
+        server_preflight = tool_call(client, "learnguard_codex_preflight", {"problem_id": PROBLEM_ID})
+        require(server_preflight.get("all_passed") is True, "server-side codex preflight did not pass")
+        require(server_preflight.get("mutates_files") is False, "server-side codex preflight may mutate files")
+        transcript.append("tools/call learnguard_codex_preflight: all checks passed, no mutation")
 
         session = tool_call(
             client,

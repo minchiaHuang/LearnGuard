@@ -15,11 +15,20 @@ environment and stop before making workspace claims. Also state that the SwiftUI
 Scoreboard can still visualize and prove the same policy, but the live Codex MCP path
 requires this preflight.
 
+If the tool is available, first call `learnguard_codex_preflight` with:
+- problem_id: "two_sum"
+
+Continue only if it reports `all_passed: true` and `mutates_files: false`.
+
 When the tools are available, follow this exact flow to demonstrate study mode:
 
 ## Step 1: Start the session
 Call `learnguard_start_session` to load the Two Sum problem context and see the 5-level
-autonomy policy. Report:
+autonomy policy. Use:
+- problem_id: "two_sum"
+- reset_demo_repo: true
+
+Report:
 - The checkpoint question the student must answer
 - What actions are allowed at Level 0
 
