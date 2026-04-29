@@ -8,31 +8,31 @@ struct DemoScriptView: View {
             time: "0:00-0:15",
             title: "Opening",
             action: "Introduce LearnGuard.",
-            line: "Codex can solve the task. The question is whether the student learned it."
+            line: "Codex can solve the task. LearnGuard checks whether the learner earned the right to let Codex act."
         ),
         DemoScriptStep(
             time: "0:15-0:35",
-            title: "Start Session",
-            action: "Click Demo. Show Two Sum, solution.py, checkpoint, and Level 0.",
-            line: "Codex normally wants to jump straight to the solution."
+            title: "Live Trace",
+            action: "Show the IDE and the Codex Agent Action Trace.",
+            line: "The trace is driven by live backend state: session, agent events, blocked actions, score, evals, and skills memory."
         ),
         DemoScriptStep(
             time: "0:35-0:55",
-            title: "Gate Blocks Codex",
-            action: "Point to the Level 0 boundary and blocked workspace actions.",
-            line: "The learner's comprehension is the permission layer."
+            title: "Level 0 Block",
+            action: "Show the real Level 0 backend block.",
+            line: "No understanding, no write autonomy."
         ),
         DemoScriptStep(
             time: "0:55-1:15",
-            title: "Checkpoint Unlock",
-            action: "Use the prepared full concept answer. Show 4/4 and level rise.",
-            line: "The student earns more workspace capability by explaining the concept."
+            title: "Unlock",
+            action: "Submit the full checkpoint answer and show 4/4.",
+            line: "The permission changes because understanding changed."
         ),
         DemoScriptStep(
             time: "1:15-1:40",
             title: "Scoreboard",
-            action: "Open Scoreboard. Show Comprehension, Gate Policy, and Red-team Eval.",
-            line: "LearnGuard does not just teach. It measures whether the gate holds."
+            action: "Open Scoreboard and point to the eval sections.",
+            line: "Comprehension, gate policy, red-team, and leakage evals prove the workflow."
         ),
         DemoScriptStep(
             time: "1:40-2:00",
@@ -48,51 +48,53 @@ struct DemoScriptView: View {
             text: """
             My project is LearnGuard.
 
-            Codex can solve many coding tasks in seconds. But for a student, the important question is: did they learn the idea, or did Codex just finish the work for them?
+            Codex can solve LeetCode in seconds. But in education, the real question is not whether Codex can solve it. The question is whether the student earned the right to let Codex act.
 
-            LearnGuard turns student comprehension into the permission layer for Codex.
+            LearnGuard is a comprehension gate for Codex agents. It sits inside the workflow and controls what Codex is allowed to do based on demonstrated understanding.
             """
         ),
         SpeakerBlock(
-            title: "Start Session",
+            title: "Live Trace",
             text: """
-            I start a session with a failing Two Sum repo.
+            This is the study-mode IDE. The learner is working on Two Sum.
 
-            The student sees solution.py, the failing task, and a tutor checkpoint. At Level 0, they have not proven understanding yet, so Codex cannot jump straight into writing the solution.
+            On the bottom, this is the Codex Agent Action Trace. It is not raw MCP JSON. It visualizes live backend state: session, agent trace events, blocked workspace actions, score, evals, and learner memory.
             """
         ),
         SpeakerBlock(
-            title: "Gate Blocks Codex",
+            title: "Level 0 Block",
             text: """
-            If Codex tries to help by writing the answer too early, LearnGuard blocks that action.
+            At Level 0, the learner has not explained the concept yet.
 
-            This is not because Codex cannot solve it. It is because the learner has not shown why the solution works.
+            LearnGuard sends the answer to the backend, the gate evaluates the current level, and a workspace action is blocked. This is not just a tutor giving advice. This is a policy gate around agent actions.
+
+            Codex wants to help, but LearnGuard says: not yet. No understanding, no write autonomy.
             """
         ),
         SpeakerBlock(
-            title: "Checkpoint Unlock",
+            title: "Unlock",
             text: """
-            Now the student explains the concept: brute force checks every pair, so it is O(n^2). A hash map remembers seen values and checks the complement, reducing the solution to O(n).
+            Now the learner explains the key concepts: brute force checks every pair, that is O(n squared), and a hash map lets us check the complement in constant time.
 
-            Once the student says that, the score reaches 4/4 and the allowed Codex actions change.
+            Once the learner reaches 4 out of 4, the autonomy level changes. The workflow that blocked Codex before can now unlock higher-level actions, because the student proved understanding.
             """
         ),
         SpeakerBlock(
             title: "Scoreboard",
             text: """
-            The Scoreboard shows four evals.
+            The Scoreboard is the proof surface.
 
-            Comprehension Eval checks whether the judge scores understanding correctly. Gate Policy Eval checks whether each workspace permission is allowed or blocked at the right level. Leakage Eval checks whether student-facing tutor paths avoid full solutions. Red-team Eval checks whether adversarial Codex actions can bypass the gate.
+            Comprehension Eval checks whether answers are scored correctly. Gate Policy Eval checks whether workspace actions are allowed or blocked at the right level. Red-team Eval checks whether adversarial Codex actions can bypass the gate. Leakage Eval checks whether tutor paths avoid leaking the full solution.
 
-            LearnGuard is not only a tutor. It is a measurable runtime gate.
+            So this is not just a nice UI. It is a workflow with evaluation.
             """
         ),
         SpeakerBlock(
             title: "skills.md Memory",
             text: """
-            The skills.md preview turns Learning Debt into learner memory.
+            Finally, LearnGuard writes Learning Debt into skills.md.
 
-            It records what the student has demonstrated, what is still weak, and what task should come next.
+            The system remembers what the learner proved, what is still weak, and what task should come next.
 
             Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act.
             """
@@ -105,6 +107,7 @@ struct DemoScriptView: View {
                 header
                 controls
                 demoChart
+                activeSpeakerCard
                 timelineCard
                 speakerCard
                 closingCard
@@ -122,11 +125,14 @@ struct DemoScriptView: View {
             Text("Live SwiftUI flow: Demo -> Checkpoint -> Scoreboard -> skills.md.")
                 .font(.caption)
                 .foregroundStyle(LGStyle.secondary)
+            Text("Use Run 2-Min Auto Demo, then read the active Speaker Notes block.")
+                .font(.caption2)
+                .foregroundStyle(LGStyle.secondary)
         }
     }
 
     private var controls: some View {
-        SectionCard(title: "Auto Demo", subtitle: "Runs the app through the two-minute flow") {
+        SectionCard(title: "Auto Demo", subtitle: "Runs the live two-minute gate workflow") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     Button {
@@ -227,8 +233,24 @@ struct DemoScriptView: View {
         }
     }
 
+    private var activeSpeakerCard: some View {
+        let block = activeSpeakerBlock
+        return SectionCard(title: "Current Speaker Cue", subtitle: "Auto-updates with the two-minute demo") {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(block.title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(LGStyle.accent)
+                Text(block.text)
+                    .font(.system(size: 14, weight: .medium))
+                    .lineSpacing(4)
+                    .foregroundStyle(LGStyle.text)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
     private var speakerCard: some View {
-        SectionCard(title: "Speaker Notes", subtitle: "Read naturally; do not over-explain code") {
+        SectionCard(title: "Full Speaker Notes", subtitle: "Backup script for rehearsal") {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(speakerBlocks) { block in
                     VStack(alignment: .leading, spacing: 5) {
@@ -263,6 +285,11 @@ struct DemoScriptView: View {
         let index = min(max(state.demoScriptStepIndex, 0), timeline.count - 1)
         let step = timeline[index]
         return "Now: \(step.time) - \(step.title)"
+    }
+
+    private var activeSpeakerBlock: SpeakerBlock {
+        let index = min(max(state.demoScriptStepIndex, 0), speakerBlocks.count - 1)
+        return speakerBlocks[index]
     }
 }
 

@@ -20,6 +20,8 @@ final class AppState: ObservableObject {
     @Published var evalScoreboard: EvalScoreboardResult?
     @Published var skillsMemory: SkillsMemoryResult?
     @Published var sessionHistory: [SessionSummary] = []
+    @Published var problemCatalog: [ProblemCatalogItem] = []
+    @Published var selectedProblemId = "two_sum"
     @Published var demoScriptStepIndex = 0
     @Published var isAutoDemoRunning = false
     @Published var demoOverlayVisible = false
@@ -33,6 +35,16 @@ final class AppState: ObservableObject {
 
     var sessionId: String? {
         session?.sessionId
+    }
+
+    var selectedProblemTitle: String {
+        problemCatalog.first { $0.problemId == selectedProblemId }?.title
+            ?? session?.task
+            ?? "Two Sum"
+    }
+
+    var activeProblemId: String {
+        session?.problemId ?? selectedProblemId
     }
 
     var levelText: String {
@@ -143,6 +155,7 @@ final class AppState: ObservableObject {
             backendStatus = backendOnline ? "Backend online" : "Backend responded: \(health.status)"
             backendErrorMessage = nil
             if backendOnline {
+                await loadProblemCatalog()
                 await loadSessionHistory()
             }
         } catch {
@@ -152,12 +165,15 @@ final class AppState: ObservableObject {
         }
     }
 
-    func startSession() async {
+    func startSession(problemId: String? = nil, focusPane: CodePane = .solution) async {
         await runBusyTask {
-            let createdSession = try await api.createSession()
+            let requestedProblemId = problemId ?? selectedProblemId
+            let createdSession = try await api.createSession(problemId: requestedProblemId)
             session = createdSession
+            syncProblemCatalog(from: createdSession)
+            selectedProblemId = createdSession.problemId ?? requestedProblemId
             studentCode = createdSession.repoContext?.currentSolution ?? ""
-            selectedPane = .solution
+            selectedPane = focusPane
             selectedRightPane = .visual
             visualStepIndex = 0
             runResult = nil
@@ -168,6 +184,28 @@ final class AppState: ObservableObject {
             backendOnline = true
             backendStatus = "Backend online"
             await loadSessionHistory()
+        }
+    }
+
+    func startProblemSession(_ problem: ProblemCatalogItem) async {
+        selectedProblemId = problem.problemId
+        await startSession(problemId: problem.problemId, focusPane: .problem)
+    }
+
+    func loadProblemCatalog() async {
+        do {
+            let response = try await api.problems()
+            problemCatalog = response.problems
+            if !problemCatalog.contains(where: { $0.problemId == selectedProblemId }),
+               let firstProblem = problemCatalog.first {
+                selectedProblemId = firstProblem.problemId
+            }
+            backendErrorMessage = nil
+        } catch {
+            backendErrorMessage = error.localizedDescription
+            if let fallbackCatalog = session?.problemCatalog, !fallbackCatalog.isEmpty {
+                problemCatalog = fallbackCatalog
+            }
         }
     }
 
@@ -184,6 +222,8 @@ final class AppState: ObservableObject {
         await runBusyTask {
             let replayedSession = try await api.getSession(id: id)
             session = replayedSession
+            syncProblemCatalog(from: replayedSession)
+            selectedProblemId = replayedSession.problemId ?? selectedProblemId
             syncStudentCode(from: replayedSession)
             selectedPane = .solution
             selectedRightPane = .visual
@@ -268,6 +308,8 @@ final class AppState: ObservableObject {
         await runBusyTask {
             let updatedSession = try await api.submitAnswer(sessionId: sessionId, answer: trimmed)
             session = updatedSession
+            syncProblemCatalog(from: updatedSession)
+            selectedProblemId = updatedSession.problemId ?? selectedProblemId
             syncStudentCode(from: updatedSession)
             tutorMessages.append(makeUnderstandingFeedbackMessage(from: updatedSession))
             evalScoreboard = try await api.evals()
@@ -308,7 +350,7 @@ final class AppState: ObservableObject {
         await setDemoStage(
             index: 0,
             title: "Opening",
-            caption: "Codex can solve the task. LearnGuard asks whether the student actually learned it.",
+            caption: "Codex can solve LeetCode in seconds. LearnGuard checks whether the learner earned the right to let Codex act.",
             progress: 0.0,
             elapsed: "0:00",
             duration: 15 * durationScale
@@ -317,8 +359,8 @@ final class AppState: ObservableObject {
 
         await setDemoStage(
             index: 1,
-            title: "Start Session",
-            caption: "Codex normally wants to jump straight to the solution. LearnGuard starts at Level 0.",
+            title: "Live Trace",
+            caption: "The Codex Agent Action Trace is driven by live backend state: session, agent_trace, blocked actions, score, evals, and memory.",
             progress: 0.13,
             elapsed: "0:15",
             duration: 20 * durationScale
@@ -329,19 +371,20 @@ final class AppState: ObservableObject {
         await setDemoStage(
             index: 2,
             title: "Gate Blocks Codex",
-            caption: "Before understanding is proven, direct solution help and workspace mutation stay blocked.",
+            caption: "At Level 0, the backend records a blocked workspace action. No understanding, no write autonomy.",
             progress: 0.29,
             elapsed: "0:35",
             duration: 20 * durationScale
         )
         selectedRightPane = .tutor
         selectedPane = .solution
+        await submitAutoDemoAnswer("I'm not sure, just write the code for me.", refreshProof: false)
         await pauseDemo(seconds: 20 * durationScale)
 
         await setDemoStage(
             index: 3,
             title: "Checkpoint Unlock",
-            caption: "The learner explains brute force, O(n^2), and hash map complement lookup.",
+            caption: "The learner explains brute force, O(n squared), and complement lookup. The score reaches 4 out of 4.",
             progress: 0.46,
             elapsed: "0:55",
             duration: 20 * durationScale
@@ -353,7 +396,7 @@ final class AppState: ObservableObject {
         await setDemoStage(
             index: 4,
             title: "Eval Scoreboard",
-            caption: "The product measures comprehension, workspace policy, and red-team resistance.",
+            caption: "The Scoreboard proves comprehension, gate policy, red-team resistance, and leakage control.",
             progress: 0.63,
             elapsed: "1:15",
             duration: 25 * durationScale
@@ -365,7 +408,7 @@ final class AppState: ObservableObject {
         await setDemoStage(
             index: 5,
             title: "skills.md Memory",
-            caption: "Learning Debt becomes reusable memory: verified skills, weak skills, and the next task.",
+            caption: "Learning Debt becomes skills.md memory: what the learner proved, what is weak, and what comes next.",
             progress: 0.83,
             elapsed: "1:40",
             duration: 20 * durationScale
@@ -412,6 +455,8 @@ final class AppState: ObservableObject {
         await runBusyTask {
             let createdSession = try await api.createSession()
             session = createdSession
+            syncProblemCatalog(from: createdSession)
+            selectedProblemId = createdSession.problemId ?? selectedProblemId
             studentCode = createdSession.repoContext?.currentSolution ?? ""
             selectedPane = .solution
             selectedRightPane = .script
@@ -424,6 +469,32 @@ final class AppState: ObservableObject {
             backendOnline = true
             backendStatus = "Backend online"
             await loadSessionHistory()
+        }
+    }
+
+    private func submitAutoDemoAnswer(_ answer: String, refreshProof: Bool) async {
+        guard let sessionId else { return }
+
+        tutorMessages.append(
+            TutorMessage(
+                role: .student,
+                message: answer,
+                hintLevel: nil,
+                containsSolution: false
+            )
+        )
+
+        await runBusyTask {
+            let updatedSession = try await api.submitAnswer(sessionId: sessionId, answer: answer)
+            session = updatedSession
+            syncProblemCatalog(from: updatedSession)
+            selectedProblemId = updatedSession.problemId ?? selectedProblemId
+            syncStudentCode(from: updatedSession)
+            tutorMessages.append(makeUnderstandingFeedbackMessage(from: updatedSession))
+            if refreshProof {
+                evalScoreboard = try await api.evals()
+                skillsMemory = try await api.skills()
+            }
         }
     }
 
@@ -522,6 +593,12 @@ final class AppState: ObservableObject {
             return
         }
         studentCode = currentSolution
+    }
+
+    private func syncProblemCatalog(from session: LearnGuardSession) {
+        if let catalog = session.problemCatalog, !catalog.isEmpty {
+            problemCatalog = catalog
+        }
     }
 
     private func runBusyTask(_ operation: () async throws -> Void) async {

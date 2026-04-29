@@ -2,7 +2,7 @@
 
 > Built at OpenAI Codex Hackathon Sydney - Wednesday, 29 April 2026
 
-**LearnGuard is a SwiftUI study-mode IDE where the learner writes the code, Codex teaches through Socratic guidance, and the Scoreboard proves the comprehension gate holds. The optional MCP rehearsal lets Codex exercise the same action policy from a local Codex session.**
+**LearnGuard is an MCP action gate for Codex study mode: the learner must prove understanding before Codex can take stronger workspace actions. The SwiftUI Scoreboard is the proof surface that visualizes whether the gate, leakage checks, and red-team policy hold.**
 
 Pitch:
 
@@ -14,21 +14,30 @@ Original repository: https://github.com/minchiaHuang/LearnGuard
 
 ## What Was Built Today
 
-For the OpenAI Codex Hackathon, the prior LearnGuard learning backend was extended with:
+For the OpenAI Codex Hackathon, the prior LearnGuard learning backend was extended into a Codex action-gating demo:
 
-- **Codex MCP gate rehearsal** - the local LearnGuard MCP server exposes guarded workspace tools for the Codex demo. Treat Codex CLI registration as environment-specific until verified on the demo machine. Run the local preflight first: `.venv/bin/python scripts/mcp_preflight.py`
-- **Eval Scoreboard** - four judging panels for Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval. The Red-team section includes 10 attack vectors with **8/8 attacks blocked, 2/2 legitimate actions passed, Precision: 100%.**
-- **Native macOS SwiftUI study shell** - Explorer, code context, Tutor, Visual trace, Scoreboard, and `skills.md` memory preview
+- **Codex MCP action gate** - the local LearnGuard MCP server exposes guarded workspace tools so Codex can ask the policy before acting. Treat Codex CLI registration as environment-specific until verified on the demo machine/session. Run the local preflight first: `.venv/bin/python scripts/mcp_preflight.py`
+- **No-mutation MCP preflight** - `learnguard_codex_preflight` confirms the rehearsal path can run with `all_passed=true` and `mutates_files=false` before the live demo prompt.
+- **SwiftUI proof surface** - the Scoreboard visualizes Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval. The Red-team section includes 10 action cases with **8/8 attacks blocked, 2/2 legitimate actions passed, Precision: 100%.**
+- **Native macOS study shell** - Explorer, code context, Tutor, Visual trace, Scoreboard, and `skills.md` memory preview
 - **Codex study-mode Tutor** - Socratic prompts that guide the learner instead of pasting a full answer
 - **Visual algorithm explainer** - a Two Sum hash map trace for concept understanding
 - **Background comprehension tracker** - score, missing concepts, hint depth, and Learning Debt state
 - **Formal product spec** - `SPEC.md` defines the student-first target MVP
 
-The SwiftUI app is the primary demo direction. The MCP rehearsal is a local technical proof path for Codex action gating, and the existing web frontend plus Playwright recording script remain fallback demo surfaces. These secondary surfaces may not show the full SwiftUI Scoreboard and `skills.md` memory experience.
+The main story is the MCP action gate: Codex should not be allowed to mutate the learning workspace until the learner earns that level. The SwiftUI app makes that policy visible for judges; the web frontend plus Playwright recording script remain fallback demo surfaces and may not show the full Scoreboard and `skills.md` memory experience.
 
-## Eval Scoreboard
+## Proof Numbers
 
-The SwiftUI Scoreboard tab is the main judging surface:
+Existing verified surfaces used for the pitch:
+
+- MCP preflight: `learnguard_codex_preflight` reports `all_passed=true` and `mutates_files=false`.
+- Red-team action policy: **8/8 attacks blocked** and **2/2 legitimate actions passed**.
+- Leakage Eval: tutor paths are checked so student-facing help refuses full-solution leakage.
+- Gate Policy Eval: workspace actions are checked against the expected autonomy level.
+- Automated verification commands already in this repo: `.venv/bin/python -m pytest tests -q`, `swift build`, and `swift test`.
+
+The SwiftUI Scoreboard is the visual proof panel:
 
 | Panel | What it proves |
 |---|---|
@@ -52,18 +61,18 @@ Red-team cases included in the final panel:
 | Read `problem.md` (legitimate) | 1 | ✅ ALLOWED |
 | `apply_patch` after full understanding | 4 | ✅ ALLOWED |
 
-**Block rate: 8/8 · Precision: 100%**
+**Block rate: 8/8 · Legitimate pass rate: 2/2 · Precision: 100%**
 
 ## Two-minute Live Demo Script
 
-Use the native SwiftUI app for the official demo. Keep the MCP rehearsal and web fallback available, but do not make them the main story.
+Make the MCP action gate the official story. Use the SwiftUI app to show the learner workflow and proof numbers, then keep the web fallback available if the native app is not suitable on the recording machine.
 
 | Time | Action | Say |
 |---|---|---|
-| 0:00-0:20 | Start Session. Show the failing Two Sum workspace, checkpoint question, and Level 0. | "Codex normally wants to jump straight to the solution." |
-| 0:20-0:45 | Show that direct solution help is blocked before understanding is proven. | "The learner's comprehension is the permission layer." |
+| 0:00-0:20 | Run MCP preflight. Show the required Codex tools are visible, then start a clean Two Sum session at Level 0. | "Codex normally wants to jump straight to the solution." |
+| 0:20-0:45 | In Codex, attempt the Level 0 `apply_patch` dry-run and show the MCP gate blocks it. | "The learner's comprehension is the permission layer." |
 | 0:45-1:10 | Enter or use the prepared full checkpoint answer. Show score reaches `4/4` and the level rises. | "The student earns more workspace capability by explaining the concept." |
-| 1:10-1:40 | Open Scoreboard. Show Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval all passing. | "LearnGuard does not just teach. It measures whether the gate holds." |
+| 1:10-1:40 | Retry the same action as a Level 4 dry-run, then open Scoreboard. | "LearnGuard does not just teach. It measures whether Codex action rights were earned." |
 | 1:40-2:00 | Show the `skills.md` preview as Learning Debt memory. | "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act." |
 
 ## Product Direction
@@ -77,7 +86,7 @@ The student is the main actor:
 5. The student improves the code.
 6. Run validates the student's own solution.
 
-The local LearnGuard MCP gate evaluates guarded workspace actions against the student's current comprehension level. When Codex CLI is explicitly configured to use that MCP server, the demo prompt exercises the gate from Codex itself. The SwiftUI Scoreboard proves the policy holds, while the `skills.md` preview turns Learning Debt into reusable learner memory.
+The local LearnGuard MCP gate evaluates guarded workspace actions against the student's current comprehension level. When Codex CLI is explicitly configured to use that MCP server, the demo prompt exercises the gate from Codex itself. This Codex MCP registration must be verified on the active demo machine/session before it is claimed live. The SwiftUI Scoreboard visualizes the proof, while the `skills.md` preview turns Learning Debt into reusable learner memory.
 
 ## Product Maturity
 
@@ -214,11 +223,11 @@ Manual native SwiftUI smoke:
 - Scoreboard shows Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval
 - `skills.md` preview appears after a checkpoint answer
 
-Manual native smoke is an app-behavior checklist. It should be rehearsed after the backend pytest, HTTP smoke checks, and MCP preflight. For the official two-minute demo, rehearse the SwiftUI flow with a timer and keep the final line exact: "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act."
+Manual native smoke is an app-behavior checklist. It should be rehearsed after the backend pytest, HTTP smoke checks, and MCP preflight. For the official two-minute demo, rehearse the MCP flow with the SwiftUI Scoreboard open and keep the final line exact: "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act."
 
-## MCP And Codex Local Rehearsal
+## MCP And Codex Integration
 
-The MCP gate is a local technical proof surface. It is not required for the primary SwiftUI live demo and is not universally pre-registered in every Codex environment; verify the active machine and active Codex session before claiming Codex is calling the LearnGuard gate.
+The MCP gate is the primary Codex-native integration path. It is not universally pre-registered in every Codex environment; verify the active machine and active Codex session before claiming Codex is calling the LearnGuard gate. If a running Codex session does not list `learnguard_codex_preflight`, restart or refresh Codex after confirming the local MCP config.
 
 Backend startup command:
 
@@ -281,7 +290,7 @@ codex "$(cat scripts/codex_demo_prompt.md)"
 
 - **Team:** minchiaHuang
 - **Event:** OpenAI Codex Hackathon Sydney, 29 April 2026
-- **Build direction:** Codex as a teacher, not as a coder
+- **Build direction:** Codex as a gated teacher, not an unearned coder
 
 Submission checklist from the event materials:
 

@@ -66,12 +66,13 @@ struct ContentView: View {
 
             Spacer()
 
+            problemMenu
             levelPill
             scorePill
             mcpPill
 
             Button {
-                Task { await state.startSession() }
+                Task { await state.startSession(problemId: state.selectedProblemId) }
             } label: {
                 Text("Demo")
                     .font(.system(size: 13, weight: .semibold))
@@ -121,6 +122,55 @@ struct ContentView: View {
                 .fill(LGStyle.border)
                 .frame(height: 1)
         }
+    }
+
+    private var problemMenu: some View {
+        Menu {
+            if state.problemCatalog.isEmpty {
+                Button("Refresh Problems") {
+                    Task { await state.loadProblemCatalog() }
+                }
+            } else {
+                ForEach(state.problemCatalog) { problem in
+                    Button {
+                        Task { await state.startProblemSession(problem) }
+                    } label: {
+                        Label(
+                            problem.title,
+                            systemImage: state.selectedProblemId == problem.problemId ? "checkmark.circle.fill" : "circle"
+                        )
+                    }
+                }
+
+                Divider()
+
+                Button {
+                    Task { await state.loadProblemCatalog() }
+                } label: {
+                    Label("Refresh Problems", systemImage: "arrow.clockwise")
+                }
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "list.bullet.rectangle")
+                    .font(.system(size: 12, weight: .bold))
+                Text(state.selectedProblemTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(LGStyle.secondary)
+            }
+            .foregroundStyle(LGStyle.text)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .frame(maxWidth: 230)
+            .background(LGStyle.softBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(LGStyle.border))
+        }
+        .menuStyle(.button)
+        .disabled(state.isBusy || !state.backendOnline)
+        .help("Choose a LeetCode 75 problem")
     }
 
     private var scorePill: some View {
