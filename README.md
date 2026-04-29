@@ -175,6 +175,59 @@ Manual native SwiftUI smoke:
 
 Manual native smoke is an app-behavior checklist. It should be rehearsed after the backend pytest and HTTP smoke checks, and recorded by the person running the macOS app.
 
+## MCP And Codex Local Rehearsal
+
+The MCP gate is a local rehearsal surface. It is not universally pre-registered in every Codex environment; verify the active machine and active Codex session before claiming Codex is calling the LearnGuard gate.
+
+Backend startup command:
+
+```bash
+.venv/bin/python -m uvicorn learnguard.app:app --host 127.0.0.1 --port 8788
+```
+
+Backend smoke commands:
+
+```bash
+.venv/bin/python -m pytest tests -q
+.venv/bin/python scripts/smoke_demo.py --base-url http://127.0.0.1:8788 --problem-id two_sum
+.venv/bin/python scripts/smoke_demo.py --base-url http://127.0.0.1:8788 --problem-id contains_duplicate
+```
+
+MCP server command for Codex stdio registration:
+
+```bash
+.venv/bin/python mcp_server.py
+```
+
+Codex local config checklist:
+
+| Item | Verify |
+|---|---|
+| Config path | The active Codex config is the local user's `~/.codex/config.toml`, unless the demo machine uses a documented override. |
+| MCP server key | A local server entry exists for LearnGuard, for example `mcp_servers.learnguard`. |
+| Command | The server command points to the repo virtualenv Python: `/Users/tommyhuang/Desktop/OpenAI Codex Hackathon/LearnGuard/.venv/bin/python`. |
+| Args | The args run the existing stdio server: `["mcp_server.py"]`. |
+| Working directory | The server starts in `/Users/tommyhuang/Desktop/OpenAI Codex Hackathon/LearnGuard`. |
+| Active workspace | The active Codex workspace is this repo, not the parent hackathon folder or another worktree. |
+
+After Codex starts with that local config, confirm the LearnGuard tools are visible in the active session before running the demo prompt. The available tool names must include:
+
+- `learnguard_start_session`
+- `learnguard_gate_action`
+- `learnguard_execute_action`
+
+Practical confirmation sequence inside Codex:
+
+1. Call `learnguard_start_session` with `{"problem_id":"two_sum","reset_demo_repo":false}` and confirm it returns repo context, a solver plan, a checkpoint, and policy levels.
+2. Call `learnguard_gate_action` with an intentionally blocked action such as `{"autonomy_level":0,"action":{"type":"apply_patch","path":"solution.py"},"problem_id":"two_sum"}` and confirm the decision is blocked.
+3. Call `learnguard_execute_action` with `execute:false` for an allowed Level 4 action and confirm it returns a gate decision without mutating the workspace.
+
+Only after those checks should the demo prompt be run:
+
+```bash
+codex "$(cat scripts/codex_demo_prompt.md)"
+```
+
 ## Hackathon Submission
 
 - **Team:** minchiaHuang

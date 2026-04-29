@@ -478,6 +478,58 @@ def test_new_session_does_not_delete_previous_session(client):
     assert second_response.json()["session_id"] == second["session_id"]
 
 
+def test_list_sessions_returns_local_sqlite_summaries_for_replay(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(app_module, "_store", app_module.SessionStore(tmp_path / "sessions.db"))
+    app_module._sessions.clear()
+
+    first = start_session(client)
+    second = start_session(client)
+    save_response = save_student_code(client, second["session_id"], CORRECT_STUDENT_SOLUTION)
+    answer_response = client.post(
+        "/api/answer",
+        json={"session_id": second["session_id"], "answer": FULL_ANSWER},
+    )
+    assert save_response.status_code == 200
+    assert answer_response.status_code == 200
+
+    response = client.get("/api/sessions")
+
+    assert response.status_code == 200
+    summaries = response.json()["sessions"]
+    assert {summary["session_id"] for summary in summaries} == {
+        first["session_id"],
+        second["session_id"],
+    }
+    replay_summary = next(summary for summary in summaries if summary["session_id"] == second["session_id"])
+    assert replay_summary["problem_id"] == "two_sum"
+    assert replay_summary["task"]
+    assert replay_summary["attempts_count"] == 1
+    assert replay_summary["latest_score"] == 4
+    assert replay_summary["latest_max"] == 4
+    assert replay_summary["learning_debt"]
+    assert replay_summary["updated_at"]
+
+
+def test_get_session_replay_detail_uses_existing_snapshot_without_creating_session(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(app_module, "_store", app_module.SessionStore(tmp_path / "sessions.db"))
+    app_module._sessions.clear()
+
+    session = start_session(client)
+    session_id = session["session_id"]
+    save_response = save_student_code(client, session_id, CORRECT_STUDENT_SOLUTION)
+    before_count = len(client.get("/api/sessions").json()["sessions"])
+
+    detail_response = client.get(f"/api/session/{session_id}")
+    after_count = len(client.get("/api/sessions").json()["sessions"])
+
+    assert save_response.status_code == 200
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["session_id"] == session_id
+    assert detail["repo_context"]["current_solution"] == CORRECT_STUDENT_SOLUTION
+    assert after_count == before_count == 1
+
+
 def test_sessions_use_isolated_workspaces(client):
     first = start_session(client)
     second = start_session(client)

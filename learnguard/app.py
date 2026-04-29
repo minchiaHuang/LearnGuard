@@ -197,6 +197,11 @@ def create_session(request: SessionRequest | None = None) -> dict[str, Any]:
     return session
 
 
+@app.get("/api/sessions")
+def list_sessions() -> dict[str, Any]:
+    return {"sessions": [_session_summary(row) for row in _store.list_sessions()]}
+
+
 @app.get("/api/session/{session_id}")
 def get_session(session_id: str) -> dict[str, Any]:
     return _require_session(session_id)
@@ -403,6 +408,28 @@ def _require_session(session_id: str) -> dict[str, Any]:
 
 def _persist_session(session: dict[str, Any]) -> None:
     _store.save_session(session)
+
+
+def _session_summary(row: dict[str, Any]) -> dict[str, Any]:
+    payload = row["payload"]
+    attempts = payload.get("attempts") or []
+    latest_attempt = attempts[-1] if attempts else {}
+    report = payload.get("report") or {}
+    return {
+        "session_id": row["session_id"],
+        "problem_id": payload.get("problem_id") or row["problem_id"],
+        "task_id": payload.get("task_id"),
+        "task": payload.get("task"),
+        "status": payload.get("status"),
+        "autonomy_level": payload.get("autonomy_level", 0),
+        "autonomy_level_name": payload.get("autonomy_level_name"),
+        "attempts_count": len(attempts),
+        "latest_score": latest_attempt.get("score"),
+        "latest_max": latest_attempt.get("max"),
+        "learning_debt": report.get("learning_debt"),
+        "updated_at": row["updated_at"],
+        "created_at": row["created_at"],
+    }
 
 
 def _agent_mode() -> str:

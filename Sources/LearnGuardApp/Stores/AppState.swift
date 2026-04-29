@@ -16,6 +16,7 @@ final class AppState: ObservableObject {
     @Published var tutorDraft = ""
     @Published var tutorMessages: [TutorMessage] = []
     @Published var redTeamResult: RedTeamResult?
+    @Published var sessionHistory: [SessionSummary] = []
 
     private let api = LearnGuardAPI()
 
@@ -130,6 +131,9 @@ final class AppState: ObservableObject {
             backendOnline = health.status == "ok"
             backendStatus = backendOnline ? "Backend online" : "Backend responded: \(health.status)"
             backendErrorMessage = nil
+            if backendOnline {
+                await loadSessionHistory()
+            }
         } catch {
             backendOnline = false
             backendStatus = "Backend offline"
@@ -150,6 +154,33 @@ final class AppState: ObservableObject {
             tutorMessages = makeInitialTutorMessages(from: createdSession)
             backendOnline = true
             backendStatus = "Backend online"
+            await loadSessionHistory()
+        }
+    }
+
+    func loadSessionHistory() async {
+        do {
+            sessionHistory = try await api.listSessions().sessions
+            backendErrorMessage = nil
+        } catch {
+            backendErrorMessage = error.localizedDescription
+        }
+    }
+
+    func replaySession(id: String) async {
+        await runBusyTask {
+            let replayedSession = try await api.getSession(id: id)
+            session = replayedSession
+            syncStudentCode(from: replayedSession)
+            selectedPane = .solution
+            selectedRightPane = .tutor
+            visualStepIndex = 0
+            runResult = nil
+            tutorDraft = ""
+            tutorMessages = makeReplayTutorMessages(from: replayedSession)
+            backendOnline = true
+            backendStatus = "Backend online"
+            await loadSessionHistory()
         }
     }
 
@@ -269,6 +300,44 @@ final class AppState: ObservableObject {
             role: .system,
             message: "\(score). \(feedback)",
             hintLevel: attempt?.level.map { "level \($0)" },
+            containsSolution: false
+        )
+    }
+
+    private func makeReplayTutorMessages(from session: LearnGuardSession) -> [TutorMessage] {
+        var messages = makeInitialTutorMessages(from: session)
+        if let attempts = session.attempts {
+            for attempt in attempts {
+                if let answer = attempt.answer, !answer.isEmpty {
+                    messages.append(
+                        TutorMessage(
+                            role: .student,
+                            message: answer,
+                            hintLevel: nil,
+                            containsSolution: false
+                        )
+                    )
+                }
+            }
+        }
+        if let lastAttempt = session.attempts?.last {
+            messages.append(makeAttemptFeedbackMessage(from: lastAttempt))
+        }
+        return messages
+    }
+
+    private func makeAttemptFeedbackMessage(from attempt: Attempt) -> TutorMessage {
+        let score = {
+            guard let score = attempt.score, let max = attempt.max else {
+                return "Score updated"
+            }
+            return "Understanding \(score)/\(max)"
+        }()
+        let feedback = attempt.hint ?? attempt.verdict ?? "Replay loaded from session history."
+        return TutorMessage(
+            role: .system,
+            message: "\(score). \(feedback)",
+            hintLevel: attempt.level.map { "level \($0)" },
             containsSolution: false
         )
     }

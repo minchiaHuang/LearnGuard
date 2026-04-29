@@ -235,6 +235,38 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(session.workspaceArtifacts?.failedActions?.first?.displayText, "pytest timed out")
     }
 
+    func testSessionHistoryResponseDecodesReplaySummaries() throws {
+        let json = """
+        {
+          "sessions": [
+            {
+              "session_id": "session-2",
+              "problem_id": "two_sum",
+              "task_id": "two_sum",
+              "task": "Fix the failing Two Sum test",
+              "status": "workspace_actions_complete",
+              "autonomy_level": 4,
+              "autonomy_level_name": "Student Run Ready",
+              "attempts_count": 1,
+              "latest_score": 4,
+              "latest_max": 4,
+              "learning_debt": "Low",
+              "updated_at": "2026-04-29 10:20:30",
+              "created_at": "2026-04-29 10:19:30"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let response = try decoder.decode(SessionHistoryResponse.self, from: json)
+        let summary = try XCTUnwrap(response.sessions.first)
+
+        XCTAssertEqual(summary.sessionId, "session-2")
+        XCTAssertEqual(summary.title, "Fix the failing Two Sum test")
+        XCTAssertEqual(summary.detailText, "L4 - 4/4")
+        XCTAssertEqual(summary.learningDebt, "Low")
+    }
+
     func testStructuredTimeoutErrorPrefersReadableMessage() throws {
         let json = """
         {
