@@ -12,3 +12,4 @@ build/
 .pytest_cache/
 output/
 node_modules/
+.learnguard_runtime/

@@ -17,6 +17,9 @@ EXPECTED_CASES = {
     "partial_complexity": (2, 2),
     "mostly_correct": (3, 3),
     "full_concept": (4, 4),
+    "paraphrased_full_concept": (4, 4),
+    "keyword_stuffing_not_full_understanding": (3, 3),
+    "incorrect_complexity_claim": (1, 1),
 }
 
 

@@ -176,4 +176,93 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(session.report?.studentDemonstratedUnderstanding, "Partial")
         XCTAssertEqual(session.report?.learningDebt, "Medium")
     }
+
+    func testSessionDecodesBackendAdditionsForProblemSelectionAndArtifacts() throws {
+        let json = """
+        {
+          "session_id": "demo",
+          "task": "Fix the failing Two Sum test",
+          "task_id": "two_sum",
+          "problem_id": "two_sum",
+          "problem_catalog": [
+            {
+              "problem_id": "contains_duplicate",
+              "title": "Contains Duplicate",
+              "difficulty": 1
+            }
+          ],
+          "session": {
+            "created_at": "2026-04-29T00:00:00Z",
+            "expires_at": "2026-04-29T01:00:00Z"
+          },
+          "repo_context": {
+            "target_file": "solution.py",
+            "test_file": "tests/test_two_sum.py",
+            "problem_statement": "# Two Sum",
+            "current_solution": "return []"
+          },
+          "workspace_artifacts": {
+            "blocked_actions": [],
+            "failed_actions": [
+              {
+                "type": "run_command",
+                "ok": false,
+                "error_code": "workspace_action_failed",
+                "message": "pytest timed out",
+                "action": {
+                  "type": "run_command",
+                  "command": ["python", "-m", "pytest"]
+                }
+              }
+            ]
+          },
+          "report": {
+            "learning_debt": "Low",
+            "next_repo_task": {
+              "task_id": "valid_anagram",
+              "difficulty": 1
+            }
+          }
+        }
+        """.data(using: .utf8)!
+
+        let session = try decoder.decode(LearnGuardSession.self, from: json)
+
+        XCTAssertEqual(session.taskId, "two_sum")
+        XCTAssertEqual(session.workspaceArtifacts?.failedActions?.first?.ok, false)
+        XCTAssertEqual(session.workspaceArtifacts?.failedActions?.first?.errorCode, "workspace_action_failed")
+        XCTAssertEqual(session.workspaceArtifacts?.failedActions?.first?.message, "pytest timed out")
+        XCTAssertEqual(session.workspaceArtifacts?.failedActions?.first?.displayText, "pytest timed out")
+    }
+
+    func testStructuredTimeoutErrorPrefersReadableMessage() throws {
+        let json = """
+        {
+          "detail": {
+            "error_code": "workspace_action_timeout",
+            "message": "Workspace action timed out while running pytest.",
+            "timeout_seconds": 15
+          }
+        }
+        """.data(using: .utf8)!
+
+        let message = LearnGuardAPIError.message(from: json, statusCode: 504, decoder: decoder)
+
+        XCTAssertEqual(message, "Workspace action timed out while running pytest.")
+    }
+
+    func testStructuredTimeoutErrorFallsBackToCodeAndSeconds() throws {
+        let json = """
+        {
+          "detail": {
+            "error_code": "workspace_action_timeout",
+            "timeout_seconds": 15
+          }
+        }
+        """.data(using: .utf8)!
+
+        let message = LearnGuardAPIError.message(from: json, statusCode: 504, decoder: decoder)
+
+        XCTAssertEqual(message, "workspace_action_timeout after 15s")
+    }
 }

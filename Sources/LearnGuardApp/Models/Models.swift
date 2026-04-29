@@ -238,6 +238,7 @@ struct WorkspaceArtifacts: Decodable {
     let testResult: ArtifactResult?
     let gitDiff: ArtifactResult?
     let blockedActions: [GateDecision]?
+    let failedActions: [ArtifactResult]?
 }
 
 struct GateDecision: Decodable, Identifiable {
@@ -255,6 +256,7 @@ struct WorkspaceAction: Decodable {
     let type: String?
     let path: String?
     let reason: String?
+    let command: [String]?
 }
 
 struct ArtifactResult: Decodable {
@@ -270,6 +272,9 @@ struct ArtifactResult: Decodable {
     let passed: Bool?
     let applied: Bool?
     let hasChanges: Bool?
+    let ok: Bool?
+    let errorCode: String?
+    let message: String?
 
     var displayText: String {
         if let diff, !diff.isEmpty {
@@ -289,6 +294,12 @@ struct ArtifactResult: Decodable {
         }
         if let stderr, !stderr.isEmpty {
             return stderr
+        }
+        if let message, !message.isEmpty {
+            return message
+        }
+        if let errorCode, !errorCode.isEmpty {
+            return errorCode
         }
         return "No artifact output yet."
     }

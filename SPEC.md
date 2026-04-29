@@ -111,7 +111,7 @@ Current implemented pieces:
 - FastAPI session and answer endpoints
 - deterministic local Tutor/Judge/Explainer fallback
 - OpenAI Agents SDK facade
-- local MCP gate server
+- local MCP gate server with guarded demo tools
 - web fallback demo
 - SwiftPM macOS shell with Explorer, editable student editor, Tutor, Visual trace, and comprehension state
 - editable SwiftUI `solution.py` editor backed by `POST /api/code`
@@ -119,6 +119,8 @@ Current implemented pieces:
 - Tutor chat backed by `POST /api/tutor`, accepting the learner message and current code context
 - UI copy that demotes the old gate dashboard language
 - Swift and Python tests for the current contracts
+
+Codex CLI integration is a demo configuration, not a global repository guarantee. Claims about Codex calling the MCP gate are valid only after the local LearnGuard MCP tools are visible in the active Codex session.
 
 ## Product Maturity
 
@@ -138,6 +140,8 @@ The editable editor and Run flow use these student-first endpoints:
 
 These endpoints must return a stable `{"detail": "session not found"}` error for missing sessions. The Tutor response must not include a full Two Sum implementation.
 
+`POST /api/session` currently works without a body for the Two Sum demo. Smoke tooling may also send an optional `problem_id` or explicit session payload so a future multi-problem backend can be rehearsed without changing the smoke runner interface.
+
 ## Verification Boundary
 
 Automated checks cover deterministic backend behavior:
@@ -146,6 +150,7 @@ Automated checks cover deterministic backend behavior:
 - pytest API tests that `/api/answer` does not mutate the student workspace
 - pytest API tests that the score changes after learner answers in the same session
 - HTTP smoke that exercises session, answer, tutor, eval, code-save, and run flows
+- HTTP smoke can optionally send a session payload or `problem_id` while keeping the current no-body session start as the default
 - HTTP smoke cleanup that restores `demo_repo/solution.py` to its exact pre-smoke content
 
 Native SwiftUI smoke is manual for the hackathon MVP. The manual checklist verifies the macOS app surface: backend offline/online states, Start Session, editable `solution.py`, Tutor, Visual trace, Run, score, and Learning Debt rendering.
