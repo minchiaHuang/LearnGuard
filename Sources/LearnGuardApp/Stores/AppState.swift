@@ -15,6 +15,7 @@ final class AppState: ObservableObject {
     @Published var runResult: RunResult?
     @Published var tutorDraft = ""
     @Published var tutorMessages: [TutorMessage] = []
+    @Published var redTeamResult: RedTeamResult?
 
     private let api = LearnGuardAPI()
 
@@ -225,6 +226,12 @@ final class AppState: ObservableObject {
             session = updatedSession
             syncStudentCode(from: updatedSession)
             tutorMessages.append(makeUnderstandingFeedbackMessage(from: updatedSession))
+        }
+    }
+
+    func fetchRedTeam() async {
+        await runBusyTask {
+            redTeamResult = try await api.redTeam()
         }
     }
 
