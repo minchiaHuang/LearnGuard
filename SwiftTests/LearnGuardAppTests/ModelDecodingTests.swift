@@ -1,0 +1,179 @@
+import XCTest
+@testable import LearnGuardApp
+
+final class ModelDecodingTests: XCTestCase {
+    private let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return decoder
+    }()
+
+    func testSessionDecodesInitialEmptyReport() throws {
+        let json = """
+        {
+          "session_id": "demo",
+          "task": "Fix the failing Two Sum test",
+          "status": "waiting_for_answer",
+          "autonomy_level": 0,
+          "autonomy_level_name": "Question Only",
+          "repo_context": {
+            "target_file": "solution.py",
+            "test_file": "tests/test_two_sum.py",
+            "problem_statement": "# Two Sum",
+            "current_solution": "return []"
+          },
+          "checkpoint": {
+            "question": "Why is brute force O(n^2)?",
+            "what_good_answer_contains": ["nested loops"],
+            "concept_being_tested": "brute_force_complexity"
+          },
+          "visual_trace": {
+            "available": false,
+            "status": "locked",
+            "steps": []
+          },
+          "workspace_artifacts": {
+            "pseudocode": null,
+            "test_plan": null,
+            "blocked_actions": []
+          },
+          "report": {}
+        }
+        """.data(using: .utf8)!
+
+        let session = try decoder.decode(LearnGuardSession.self, from: json)
+
+        XCTAssertEqual(session.sessionId, "demo")
+        XCTAssertEqual(session.checkpoint?.whatGoodAnswerContains?.first, "nested loops")
+        XCTAssertNotNil(session.report)
+        XCTAssertNil(session.report?.learningDebt)
+    }
+
+    func testVisualTraceUsesStepperFallbackWhenStepsAreEmpty() throws {
+        let json = """
+        {
+          "available": true,
+          "status": "available",
+          "problem": "Two Sum",
+          "steps": [],
+          "stepper": [
+            {
+              "step": 1,
+              "action": "i=0",
+              "map_state": "{}",
+              "question": "Need 7?",
+              "result": "Store 2",
+              "map_after": "{2: 0}"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let trace = try decoder.decode(VisualTrace.self, from: json)
+
+        XCTAssertEqual(trace.displaySteps.count, 1)
+        XCTAssertEqual(trace.displaySteps.first?.mapAfter, "{2: 0}")
+    }
+
+    func testCodeSaveResponseDecodesStudentEditorContract() throws {
+        let json = """
+        {
+          "session_id": "demo",
+          "path": "solution.py",
+          "saved": true,
+          "content": "def two_sum(nums, target):\\n    return []\\n"
+        }
+        """.data(using: .utf8)!
+
+        let response = try decoder.decode(CodeSaveResponse.self, from: json)
+
+        XCTAssertEqual(response.sessionId, "demo")
+        XCTAssertEqual(response.path, "solution.py")
+        XCTAssertEqual(response.saved, true)
+        XCTAssertEqual(response.content, "def two_sum(nums, target):\n    return []\n")
+    }
+
+    func testRunResponseDecodesStudentTestResultContract() throws {
+        let json = """
+        {
+          "session_id": "demo",
+          "passed": true,
+          "exit_code": 0,
+          "stdout": "4 passed in 0.02s",
+          "stderr": "",
+          "command": ["python", "-m", "pytest", "tests/test_two_sum.py", "-q"],
+          "command_metadata": {
+            "argv": ["python", "-m", "pytest", "tests/test_two_sum.py", "-q"],
+            "cwd": "/tmp/demo_repo",
+            "runner": "pytest",
+            "target": "tests/test_two_sum.py"
+          }
+        }
+        """.data(using: .utf8)!
+
+        let response = try decoder.decode(RunResult.self, from: json)
+
+        XCTAssertEqual(response.sessionId, "demo")
+        XCTAssertEqual(response.passed, true)
+        XCTAssertEqual(response.exitCode, 0)
+        XCTAssertEqual(response.stdout, "4 passed in 0.02s")
+        XCTAssertEqual(response.commandMetadata?.runner, "pytest")
+        XCTAssertEqual(response.commandMetadata?.target, "tests/test_two_sum.py")
+    }
+
+    func testTutorResponseDecodesSocraticContractWithoutSolution() throws {
+        let json = """
+        {
+          "role": "tutor",
+          "message": "Before changing the code, how many pairs can there be for n numbers?",
+          "contains_solution": false,
+          "hint_level": "question"
+        }
+        """.data(using: .utf8)!
+
+        let response = try decoder.decode(TutorAPIResponse.self, from: json)
+
+        XCTAssertEqual(response.role, "tutor")
+        XCTAssertEqual(response.containsSolution, false)
+        XCTAssertEqual(response.hintLevel, "question")
+        XCTAssertTrue(response.message.contains("?"))
+    }
+
+    func testAnswerSessionDecodesUnderstandingScoreAndReport() throws {
+        let json = """
+        {
+          "session_id": "demo",
+          "status": "waiting_for_improved_answer",
+          "autonomy_level": 2,
+          "autonomy_level_name": "Guided Planning",
+          "attempts": [
+            {
+              "answer": "Brute force checks every pair, then a map remembers previous values.",
+              "score": 2,
+              "max": 4,
+              "level": 2,
+              "verdict": "Partial",
+              "missing": ["complement_lookup"],
+              "action": "ask_follow_up",
+              "hint": "Explain how target - num finds the earlier index."
+            }
+          ],
+          "report": {
+            "codex_contribution": "Medium",
+            "student_demonstrated_understanding": "Partial",
+            "learning_debt": "Medium",
+            "learning_debt_notes": ["Student still needs complement lookup clarity."]
+          }
+        }
+        """.data(using: .utf8)!
+
+        let session = try decoder.decode(LearnGuardSession.self, from: json)
+
+        XCTAssertEqual(session.autonomyLevel, 2)
+        XCTAssertEqual(session.attempts?.last?.score, 2)
+        XCTAssertEqual(session.attempts?.last?.max, 4)
+        XCTAssertEqual(session.attempts?.last?.missing?.first, "complement_lookup")
+        XCTAssertEqual(session.report?.studentDemonstratedUnderstanding, "Partial")
+        XCTAssertEqual(session.report?.learningDebt, "Medium")
+    }
+}

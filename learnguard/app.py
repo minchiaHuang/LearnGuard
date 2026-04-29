@@ -15,9 +15,16 @@ from pydantic import BaseModel
 
 from . import agents as local_agents
 from .concept_graph import update_concept_graph
+from .contracts import SavedCodeResult, StudentTestResult, TutorResponse
 from .gate import enforce_codex_action, policy_summary
 from .reports import generate_learning_report
-from .workspace import execute_workspace_action, load_demo_repo_context, normal_codex_path_preview
+from .workspace import (
+    execute_workspace_action,
+    load_demo_repo_context,
+    normal_codex_path_preview,
+    run_student_solution_tests,
+    save_student_solution,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +58,22 @@ _AGENT_RUNTIME_MODULE, _AGENT_RUNTIME_ERROR = _load_agent_runtime()
 class AnswerRequest(BaseModel):
     session_id: str
     answer: str
+
+
+class CodeRequest(BaseModel):
+    session_id: str
+    path: str
+    content: str
+
+
+class RunRequest(BaseModel):
+    session_id: str
+
+
+class TutorRequest(BaseModel):
+    session_id: str
+    message: str
+    current_code: str
 
 
 @app.get("/health")
@@ -160,17 +183,12 @@ def create_session() -> dict[str, Any]:
 
 @app.get("/api/session/{session_id}")
 def get_session(session_id: str) -> dict[str, Any]:
-    session = _sessions.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="session not found")
-    return session
+    return _require_session(session_id)
 
 
 @app.post("/api/answer")
 def submit_answer(request: AnswerRequest) -> dict[str, Any]:
-    session = _sessions.get(request.session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="session not found")
+    session = _require_session(request.session_id)
 
     judge = _submit_judge_answer(request.answer, session)
     level = score_to_level(judge["total"], judge["max"])
@@ -230,7 +248,26 @@ def submit_answer(request: AnswerRequest) -> dict[str, Any]:
             session["workspace_artifacts"]["blocked_actions"].append(decision)
             continue
 
-        result = execute_workspace_action(action)
+        if not _should_auto_execute_answer_action(action):
+            result = _skipped_answer_action_result(action)
+            session["workspace_artifacts"]["allowed_actions"].append({"action": action, "result": result})
+            _add_trace(session, "Workspace", "action_skipped", result)
+            continue
+
+        try:
+            result = execute_workspace_action(action)
+        except Exception as exc:
+            result = {
+                "type": action["type"],
+                "ok": False,
+                "error_code": "workspace_action_failed",
+                "message": str(exc),
+                "action": action,
+            }
+            session["workspace_artifacts"].setdefault("failed_actions", []).append(result)
+            _add_trace(session, "Workspace", "action_failed", result)
+            continue
+
         session["workspace_artifacts"]["allowed_actions"].append({"action": action, "result": result})
         _record_artifact(session, action["type"], result)
         _add_trace(session, "Workspace", "action_complete", result)
@@ -243,6 +280,66 @@ def submit_answer(request: AnswerRequest) -> dict[str, Any]:
     return session
 
 
+@app.post("/api/code")
+def save_code(request: CodeRequest) -> SavedCodeResult:
+    session = _require_session(request.session_id)
+    try:
+        saved = save_student_solution(request.path, request.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    session["repo_context"]["current_solution"] = saved["content"]
+    _add_trace(
+        session,
+        "Student",
+        "code_saved",
+        {
+            "path": saved["path"],
+            "saved": saved["saved"],
+            "bytes": len(saved["content"].encode("utf-8")),
+        },
+    )
+    return {
+        "session_id": request.session_id,
+        "path": saved["path"],
+        "saved": saved["saved"],
+        "content": saved["content"],
+    }
+
+
+@app.post("/api/run")
+def run_code(request: RunRequest) -> StudentTestResult:
+    session = _require_session(request.session_id)
+    result = run_student_solution_tests(request.session_id)
+    session["workspace_artifacts"]["test_result"] = result
+    _add_trace(
+        session,
+        "Workspace",
+        "student_tests_complete",
+        {
+            "passed": result["passed"],
+            "exit_code": result["exit_code"],
+            "command": result["command_metadata"],
+        },
+    )
+    return result
+
+
+@app.post("/api/tutor")
+def tutor(request: TutorRequest) -> TutorResponse:
+    session = _require_session(request.session_id)
+    response = _build_tutor_response(request.message, request.current_code)
+    session.setdefault("tutor_messages", []).append(
+        {
+            "message": request.message,
+            "hint_level": response["hint_level"],
+            "contains_solution": response["contains_solution"],
+        }
+    )
+    _add_trace(session, "Tutor", "hinted", response)
+    return response
+
+
 @app.get("/api/evals")
 def evals() -> dict[str, Any]:
     cases = run_judge_evals()
@@ -252,6 +349,13 @@ def evals() -> dict[str, Any]:
         "total": len(cases),
         "passed": sum(1 for case in cases if case["pass"]),
     }
+
+
+def _require_session(session_id: str) -> dict[str, Any]:
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="session not found")
+    return session
 
 
 def _agent_mode() -> str:
@@ -347,6 +451,89 @@ def _submit_judge_answer(answer: str, session: dict[str, Any]) -> dict[str, Any]
         return judge_answer(answer)
 
 
+def _build_tutor_response(message: str, current_code: str) -> TutorResponse:
+    normalized_message = _normalize_text(message)
+    normalized_code = _normalize_text(current_code)
+
+    if _mentions_solution_request(normalized_message):
+        hint_level = "boundary"
+        tutor_message = (
+            "I cannot paste the finished solution. First, what pairs would brute force check, "
+            "and why does that become O(n^2)? Then ask what complement each number needs."
+        )
+    elif not current_code.strip() or "return []" in normalized_code:
+        hint_level = "starter"
+        tutor_message = (
+            "Start by explaining brute force in words: which pairs are checked, and how many "
+            "checks happen as the list grows? After that, ask what information a hash map could remember."
+        )
+    elif _looks_like_brute_force(normalized_code) and not _looks_like_hash_map(normalized_code):
+        hint_level = "complexity"
+        tutor_message = (
+            "Your code appears to compare pairs directly. Which repeated comparisons make that quadratic? "
+            "What value could be stored so each new number only asks whether its complement was seen?"
+        )
+    elif _looks_like_hash_map(normalized_code) and not _mentions_complement(normalized_code):
+        hint_level = "complement"
+        tutor_message = (
+            "You are using memory, which is the right direction. For each number, what complement would reach "
+            "the target, and should you check for that complement before or after storing the current number?"
+        )
+    elif _mentions_failure(normalized_message):
+        hint_level = "debug"
+        tutor_message = (
+            "Debug by tracing one failing case by hand. At each index, name the current number, the needed "
+            "complement, and what the hash map has already seen. Where does the trace stop matching the test?"
+        )
+    else:
+        hint_level = "concept"
+        tutor_message = (
+            "Connect the ideas before changing code: brute force checks every pair, which is O(n^2). "
+            "How can a hash map of seen values turn that into one complement question per number?"
+        )
+
+    return {
+        "role": "tutor",
+        "message": tutor_message,
+        "hint_level": hint_level,
+        "contains_solution": False,
+    }
+
+
+def _normalize_text(value: str) -> str:
+    return " ".join(value.lower().strip().split())
+
+
+def _mentions_solution_request(text: str) -> bool:
+    return any(
+        phrase in text
+        for phrase in (
+            "give me the code",
+            "write the code",
+            "full solution",
+            "complete solution",
+            "paste the solution",
+            "just solve",
+        )
+    )
+
+
+def _looks_like_brute_force(text: str) -> bool:
+    return text.count("for ") >= 2 or "nested" in text or "every pair" in text or "all pairs" in text
+
+
+def _looks_like_hash_map(text: str) -> bool:
+    return any(word in text for word in ("dict", "dictionary", "hash", "map", "seen", "{}"))
+
+
+def _mentions_complement(text: str) -> bool:
+    return "complement" in text or "target -" in text or "target minus" in text or "needed" in text
+
+
+def _mentions_failure(text: str) -> bool:
+    return any(word in text for word in ("fail", "failing", "error", "wrong", "bug", "test"))
+
+
 def _locked_visual_trace(plan: dict[str, Any]) -> dict[str, Any]:
     return {
         "available": False,
@@ -377,13 +564,11 @@ def _video_demo_state_for_level(
 ) -> dict[str, str]:
     artifacts = artifacts or {}
     if level >= 4:
-        test_result = artifacts.get("test_result") or {}
-        pytest_status = "pytest passed" if test_result.get("passed") else "pytest result captured"
         return {
-            "current_scene": "level_4_workspace_unlock",
-            "next_step": "review_learning_report",
-            "highlight": f"Workspace gate allowed apply_patch, run_command, and show_diff; {pytest_status}.",
-            "narration": "After full understanding is demonstrated, LearnGuard lets Codex mutate the repo, run tests, and expose the diff.",
+            "current_scene": "student_run_ready",
+            "next_step": "student_runs_tests",
+            "highlight": "Understanding is complete; use Run to validate the student's saved code.",
+            "narration": "After understanding is demonstrated, LearnGuard keeps the student in control of code changes and test execution.",
         }
 
     if level >= 2:
@@ -410,6 +595,29 @@ def _video_demo_state_for_level(
 
 def _add_trace(session: dict[str, Any], agent: str, status: str, payload: dict[str, Any]) -> None:
     session["agent_trace"].append({"agent": agent, "status": status, "payload": payload})
+
+
+def _should_auto_execute_answer_action(action: dict[str, Any]) -> bool:
+    return action.get("type") not in {
+        "apply_patch",
+        "write_file",
+        "propose_diff",
+        "show_diff",
+        "run_command",
+    }
+
+
+def _skipped_answer_action_result(action: dict[str, Any]) -> dict[str, Any]:
+    action_type = action.get("type", "unknown")
+    return {
+        "type": action_type,
+        "ok": True,
+        "auto_executed": False,
+        "reason": (
+            "/api/answer is student-facing and does not auto-generate diffs, "
+            "apply patches, or run tests. Use /api/code and /api/run for student-owned code validation."
+        ),
+    }
 
 
 def _record_artifact(session: dict[str, Any], action_type: str, result: dict[str, Any]) -> None:

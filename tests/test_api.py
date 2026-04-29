@@ -19,6 +19,25 @@ FULL_ANSWER = (
     "Brute force checks all pairs, about n*(n-1)/2 comparisons, so O(n^2). "
     "A hash map improves this by storing seen values and checking the complement in O(1)."
 )
+BASELINE_STUDENT_SOLUTION = '''def two_sum(nums, target):
+    """Return indices of two numbers that add up to target."""
+    return []
+'''
+CORRECT_STUDENT_SOLUTION = '''def two_sum(nums, target):
+    """Return indices of two numbers that add up to target."""
+    seen = {}
+    for index, num in enumerate(nums):
+        complement = target - num
+        if complement in seen:
+            return [seen[complement], index]
+        seen[num] = index
+    return []
+'''
+FULL_SOLUTION_CODE_MARKERS = (
+    "for index, num in enumerate(nums):",
+    "return [seen[complement], index]",
+    "seen[num] = index",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -85,6 +104,85 @@ def fresh_client():
     return TestClient(reloaded.app), reloaded
 
 
+def save_student_code(client, session_id, content, path="solution.py"):
+    return client.post(
+        "/api/code",
+        json={"session_id": session_id, "path": path, "content": content},
+    )
+
+
+def run_student_code(client, session_id):
+    return client.post("/api/run", json={"session_id": session_id})
+
+
+def ask_tutor(client, session_id, message, current_code=BASELINE_STUDENT_SOLUTION):
+    return client.post(
+        "/api/tutor",
+        json={
+            "session_id": session_id,
+            "message": message,
+            "current_code": current_code,
+        },
+    )
+
+
+def response_text(payload):
+    if isinstance(payload, dict):
+        values = []
+        for value in payload.values():
+            values.append(response_text(value))
+        return "\n".join(item for item in values if item)
+    if isinstance(payload, list):
+        return "\n".join(response_text(item) for item in payload)
+    if payload is None:
+        return ""
+    return str(payload)
+
+
+def tutor_message_from(payload):
+    for key in ("message", "content", "guidance", "response", "tutor_message"):
+        value = payload.get(key)
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            nested = tutor_message_from(value)
+            if nested:
+                return nested
+    return ""
+
+
+def run_payload_from(payload):
+    for key in ("test_result", "run", "result"):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            return value
+    return payload
+
+
+def assert_run_failed(payload):
+    run_payload = run_payload_from(payload)
+    output = response_text(run_payload).lower()
+    assert run_payload.get("passed") is False or run_payload.get("exit_code", 1) != 0
+    assert "failed" in output or "assert" in output or run_payload.get("exit_code", 0) != 0
+
+
+def assert_run_passed(payload):
+    run_payload = run_payload_from(payload)
+    output = response_text(run_payload).lower()
+    assert run_payload.get("passed") is True or run_payload.get("exit_code") == 0 or "passed" in output
+
+
+def assert_stable_missing_session_error(response):
+    assert response.status_code == 404
+    assert response.json() == {"detail": "session not found"}
+
+
+def assert_no_full_solution_markers(payload):
+    serialized = response_text(payload)
+    for marker in FULL_SOLUTION_CODE_MARKERS:
+        assert marker not in serialized
+
+
 def assert_agent_mode(payload, expected):
     assert payload.get("agent_mode") == expected, (
         "API sessions must report the selected agent runtime mode as "
@@ -140,29 +238,35 @@ def assert_partial_level_2_blocks_apply_patch(payload):
     assert next_task.get("reason")
 
 
-def assert_full_level_4_passing_report(payload):
+def assert_full_level_4_student_ready_report(payload):
     assert payload["autonomy_level"] == 4
     assert judge_result_from(payload)["total"] == 4
 
     report = payload.get("report")
     assert report, "Full unlock response must include a learning report."
     assert report.get("autonomy_level_granted", report.get("autonomy_level")) == 4
-    assert report.get("level_name", report.get("autonomy_level_name")) == "Workspace Unlock"
+    assert report.get("level_name", report.get("autonomy_level_name")) in {
+        "Student Run Ready",
+        "Workspace Unlock",
+    }
 
-    test_result = report["test_result"]
-    if isinstance(test_result, dict):
+    test_result = report.get("test_result")
+    if test_result is None:
+        workspace_artifacts = payload.get("workspace_artifacts") or {}
+        assert not workspace_artifacts.get("applied_patch")
+    elif isinstance(test_result, dict):
         output = "\n".join(str(test_result.get(key, "")) for key in ("output", "stdout", "stderr"))
         passed = test_result.get("passed")
         returncode = test_result.get("returncode", test_result.get("exit_code"))
+        assert passed is True or returncode == 0 or "passed" in output
     else:
-        output = str(test_result)
-        passed = None
-        returncode = None
+        assert "passed" in str(test_result)
 
-    assert passed is True or returncode == 0 or "passed" in output
-
-    git_diff = report["git_diff"]
-    if isinstance(git_diff, dict):
+    git_diff = report.get("git_diff")
+    if git_diff is None:
+        workspace_artifacts = payload.get("workspace_artifacts") or {}
+        assert not workspace_artifacts.get("git_diff")
+    elif isinstance(git_diff, dict):
         assert git_diff.get("has_changes") is True or git_diff.get("diff")
     else:
         assert str(git_diff).strip()
@@ -172,6 +276,26 @@ def assert_full_level_4_passing_report(payload):
     assert next_task.get("task_id") == "valid_anagram"
     assert next_task.get("difficulty") == 1
     assert "frequency" in next_task.get("reason", "").lower()
+
+
+def assert_full_level_4_passing_report(payload):
+    assert_full_level_4_student_ready_report(payload)
+    report = payload["report"]
+    test_result = report.get("test_result")
+    if isinstance(test_result, dict):
+        output = "\n".join(str(test_result.get(key, "")) for key in ("output", "stdout", "stderr"))
+        passed = test_result.get("passed")
+        returncode = test_result.get("returncode", test_result.get("exit_code"))
+        assert passed is True or returncode == 0 or "passed" in output
+    elif test_result is not None:
+        output = str(test_result)
+        assert "passed" in output
+
+    git_diff = report.get("git_diff")
+    if isinstance(git_diff, dict):
+        assert git_diff.get("has_changes") is True or git_diff.get("diff")
+    elif git_diff is not None:
+        assert str(git_diff).strip()
 
 
 def test_without_openai_api_key_uses_local_mode_and_existing_flow_passes(monkeypatch):
@@ -352,3 +476,175 @@ def test_full_answer_returns_level_4_report_with_passing_pytest(client):
     data = response.json()
 
     assert_full_level_4_passing_report(data)
+
+
+def test_workspace_action_failure_returns_structured_artifact(client, monkeypatch):
+    session = start_session(client)
+
+    def fail_workspace_action(action):
+        raise ValueError(f"bad workspace action: {action['type']}")
+
+    monkeypatch.setattr(app_module, "execute_workspace_action", fail_workspace_action)
+
+    response = client.post(
+        "/api/answer",
+        json={"session_id": session["session_id"], "answer": FULL_ANSWER},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    failed_actions = data["workspace_artifacts"]["failed_actions"]
+    assert failed_actions
+    assert failed_actions[0]["ok"] is False
+    assert failed_actions[0]["error_code"] == "workspace_action_failed"
+    assert "bad workspace action" in failed_actions[0]["message"]
+    assert any(event["status"] == "action_failed" for event in trace_from(data))
+
+
+def test_student_code_save_then_run_failing_tests(client):
+    session = start_session(client)
+    session_id = session["session_id"]
+
+    save_response = save_student_code(client, session_id, BASELINE_STUDENT_SOLUTION)
+    assert save_response.status_code == 200
+    save_payload = save_response.json()
+    assert save_payload.get("session_id", session_id) == session_id
+    assert save_payload.get("path", "solution.py") == "solution.py"
+
+    run_response = run_student_code(client, session_id)
+    assert run_response.status_code == 200
+    assert_run_failed(run_response.json())
+
+
+def test_student_code_save_then_run_passing_tests(client):
+    session = start_session(client)
+    session_id = session["session_id"]
+
+    save_response = save_student_code(client, session_id, CORRECT_STUDENT_SOLUTION)
+    assert save_response.status_code == 200
+    save_payload = save_response.json()
+    assert save_payload.get("session_id", session_id) == session_id
+    assert save_payload.get("path", "solution.py") == "solution.py"
+
+    run_response = run_student_code(client, session_id)
+    assert run_response.status_code == 200
+    assert_run_passed(run_response.json())
+
+
+def test_student_code_invalid_path_is_rejected(client):
+    session = start_session(client)
+
+    response = save_student_code(
+        client,
+        session["session_id"],
+        BASELINE_STUDENT_SOLUTION,
+        path="../solution.py",
+    )
+
+    assert response.status_code in {400, 422}
+    assert "path" in response_text(response.json()).lower()
+
+
+@pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        (
+            "/api/code",
+            {
+                "session_id": "missing-session",
+                "path": "solution.py",
+                "content": BASELINE_STUDENT_SOLUTION,
+            },
+        ),
+        ("/api/run", {"session_id": "missing-session"}),
+        (
+            "/api/tutor",
+            {
+                "session_id": "missing-session",
+                "message": "What should I think about first?",
+                "current_code": BASELINE_STUDENT_SOLUTION,
+            },
+        ),
+    ],
+)
+def test_student_first_endpoints_return_stable_missing_session_error(client, path, payload):
+    response = client.post(path, json=payload)
+
+    assert_stable_missing_session_error(response)
+
+
+def test_tutor_returns_socratic_guidance_without_solution_code(client):
+    session = start_session(client)
+
+    response = ask_tutor(
+        client,
+        session["session_id"],
+        "I'm stuck. Can you help me fix Two Sum?",
+        current_code=BASELINE_STUDENT_SOLUTION,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["contains_solution"] is False
+
+    message = tutor_message_from(payload)
+    assert message
+    assert "?" in message or any(word in message.lower() for word in ("why", "what", "how", "trace"))
+
+    assert_no_full_solution_markers(payload)
+
+
+def test_partial_answer_response_does_not_leak_full_solution(client):
+    session = start_session(client)
+
+    response = client.post(
+        "/api/answer",
+        json={"session_id": session["session_id"], "answer": PARTIAL_ANSWER},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["autonomy_level"] == 2
+    assert_no_full_solution_markers(payload)
+
+
+def test_answer_endpoint_does_not_mutate_student_workspace(client):
+    session = start_session(client)
+    solution_path = PROJECT_ROOT / "demo_repo" / "solution.py"
+    before = solution_path.read_text(encoding="utf-8")
+
+    response = client.post(
+        "/api/answer",
+        json={"session_id": session["session_id"], "answer": FULL_ANSWER},
+    )
+
+    assert response.status_code == 200
+    after = solution_path.read_text(encoding="utf-8")
+    assert after == before
+
+
+def test_score_changes_after_learner_answer_in_same_session(client):
+    session = start_session(client)
+    session_id = session["session_id"]
+
+    partial_response = client.post(
+        "/api/answer",
+        json={"session_id": session_id, "answer": PARTIAL_ANSWER},
+    )
+    assert partial_response.status_code == 200
+    partial_payload = partial_response.json()
+    partial_score = judge_result_from(partial_payload)["total"]
+
+    full_response = client.post(
+        "/api/answer",
+        json={"session_id": session_id, "answer": FULL_ANSWER},
+    )
+    assert full_response.status_code == 200
+    full_payload = full_response.json()
+    full_score = judge_result_from(full_payload)["total"]
+
+    assert partial_score == 2
+    assert full_score == 4
+    assert full_score != partial_score
+    assert full_payload["session_id"] == session_id
+    assert [attempt["score"] for attempt in full_payload["attempts"][-2:]] == [2, 4]

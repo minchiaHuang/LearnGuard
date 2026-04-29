@@ -8,6 +8,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any, Callable
 
 
@@ -16,6 +17,26 @@ FULL_ANSWER = (
     "Brute force checks all pairs, about n*(n-1)/2 comparisons, so O(n^2). "
     "A hash map improves this by storing seen values and checking the complement in O(1)."
 )
+BASELINE_STUDENT_SOLUTION = '''def two_sum(nums, target):
+    """Return indices of two numbers that add up to target."""
+    return []
+'''
+CORRECT_STUDENT_SOLUTION = '''def two_sum(nums, target):
+    """Return indices of two numbers that add up to target."""
+    seen = {}
+    for index, num in enumerate(nums):
+        complement = target - num
+        if complement in seen:
+            return [seen[complement], index]
+        seen[num] = index
+    return []
+'''
+FULL_SOLUTION_CODE_MARKERS = (
+    "for index, num in enumerate(nums):",
+    "return [seen[complement], index]",
+    "seen[num] = index",
+)
+DEFAULT_SOLUTION_PATH = Path(__file__).resolve().parents[1] / "demo_repo" / "solution.py"
 
 
 class CheckFailure(AssertionError):
@@ -29,31 +50,53 @@ def main() -> int:
         default="http://127.0.0.1:8000",
         help="Base URL for the local FastAPI server.",
     )
+    parser.add_argument(
+        "--solution-path",
+        default=str(DEFAULT_SOLUTION_PATH),
+        help="Local demo_repo/solution.py path used to verify smoke cleanup.",
+    )
     args = parser.parse_args()
     base_url = args.base_url.rstrip("/")
+    solution_path = Path(args.solution_path)
+    original_solution = solution_path.read_text(encoding="utf-8") if solution_path.exists() else None
 
     checks: list[tuple[str, Callable[[str], str]]] = [
         ("health", check_health),
         ("session", check_session),
         ("partial", check_partial_answer),
         ("full", check_full_answer),
+        ("student-code-failing", check_student_code_failing),
+        ("student-code-passing", check_student_code_passing),
+        ("tutor", check_tutor),
         ("evals", check_evals),
     ]
 
     passed = 0
-    for name, check in checks:
-        try:
-            detail = check(base_url)
-        except Exception as exc:
-            print(f"FAIL {name}: {exc}")
-            continue
-
-        passed += 1
-        suffix = f": {detail}" if detail else ""
-        print(f"PASS {name}{suffix}")
-
     total = len(checks)
-    print(f"SUMMARY {passed}/{total} passed")
+    try:
+        for name, check in checks:
+            try:
+                detail = check(base_url)
+            except Exception as exc:
+                print(f"FAIL {name}: {exc}")
+                continue
+
+            passed += 1
+            suffix = f": {detail}" if detail else ""
+            print(f"PASS {name}{suffix}")
+
+        print(f"SUMMARY {passed}/{total} passed")
+    finally:
+        if original_solution is not None:
+            try:
+                restore_demo_solution(base_url, original_solution)
+                restored = solution_path.read_text(encoding="utf-8")
+                if restored == original_solution:
+                    print("PASS cleanup: demo_repo/solution.py restored to pre-smoke content")
+                else:
+                    print("WARN cleanup: demo_repo/solution.py differs from pre-smoke content")
+            except Exception as exc:
+                print(f"WARN cleanup: {exc}")
     return 0 if passed == total else 1
 
 
@@ -85,10 +128,43 @@ def check_full_answer(base_url: str) -> str:
     require(judge_total(data) == 4, f"expected judge total=4, got {judge_total(data)!r}")
     report = data.get("report")
     require(isinstance(report, dict) and report, "expected non-empty learning report")
-    require(test_passed(report.get("test_result")), "expected passing pytest result in report")
-    require(has_diff(report.get("git_diff")), "expected non-empty diff artifact in report")
+    require(not workspace_was_mutated(data), "expected /api/answer to leave student workspace unmodified")
     start_session(base_url)
-    return "level=4 pytest=passed diff=present"
+    return "level=4 report=present workspace=unchanged"
+
+
+def check_student_code_failing(base_url: str) -> str:
+    session = start_session(base_url)
+    save_code(base_url, session["session_id"], BASELINE_STUDENT_SOLUTION)
+    data = run_code(base_url, session["session_id"])
+    require(run_failed(data), "expected baseline student solution to fail tests")
+    return "baseline=failed"
+
+
+def check_student_code_passing(base_url: str) -> str:
+    session = start_session(base_url)
+    save_code(base_url, session["session_id"], CORRECT_STUDENT_SOLUTION)
+    data = run_code(base_url, session["session_id"])
+    require(run_passed(data), "expected corrected student solution to pass tests")
+    return "student_solution=passed"
+
+
+def check_tutor(base_url: str) -> str:
+    session = start_session(base_url)
+    data = ask_tutor(
+        base_url,
+        session["session_id"],
+        "I'm stuck. Can you help me fix Two Sum?",
+        BASELINE_STUDENT_SOLUTION,
+    )
+    require(data.get("contains_solution") is False, "expected contains_solution=false")
+    message = tutor_message(data)
+    require(message, "expected tutor guidance message")
+    require("?" in message or any(word in message.lower() for word in ("why", "what", "how", "trace")), "expected Socratic guidance")
+    serialized = response_text(data)
+    for marker in FULL_SOLUTION_CODE_MARKERS:
+        require(marker not in serialized, f"tutor leaked full solution marker: {marker}")
+    return "contains_solution=false"
 
 
 def check_evals(base_url: str) -> str:
@@ -108,6 +184,33 @@ def start_session(base_url: str) -> dict[str, Any]:
 
 def submit_answer(base_url: str, session_id: str, answer: str) -> dict[str, Any]:
     return request_json(base_url, "POST", "/api/answer", {"session_id": session_id, "answer": answer})
+
+
+def restore_demo_solution(base_url: str, content: str) -> None:
+    session = start_session(base_url)
+    save_code(base_url, session["session_id"], content)
+
+
+def save_code(base_url: str, session_id: str, content: str) -> dict[str, Any]:
+    return request_json(
+        base_url,
+        "POST",
+        "/api/code",
+        {"session_id": session_id, "path": "solution.py", "content": content},
+    )
+
+
+def run_code(base_url: str, session_id: str) -> dict[str, Any]:
+    return request_json(base_url, "POST", "/api/run", {"session_id": session_id})
+
+
+def ask_tutor(base_url: str, session_id: str, message: str, current_code: str) -> dict[str, Any]:
+    return request_json(
+        base_url,
+        "POST",
+        "/api/tutor",
+        {"session_id": session_id, "message": message, "current_code": current_code},
+    )
 
 
 def request_json(base_url: str, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -184,6 +287,59 @@ def test_passed(test_result: Any) -> bool:
         output = "\n".join(str(test_result.get(key, "")) for key in ("output", "stdout", "stderr"))
         return test_result.get("passed") is True or test_result.get("exit_code") == 0 or "passed" in output
     return "passed" in str(test_result)
+
+
+def workspace_was_mutated(data: dict[str, Any]) -> bool:
+    report = data.get("report") or {}
+    artifacts = data.get("workspace_artifacts") or {}
+    return bool(
+        report.get("test_result")
+        or report.get("git_diff")
+        or artifacts.get("applied_patch")
+        or artifacts.get("git_diff")
+    )
+
+
+def run_payload(data: dict[str, Any]) -> dict[str, Any]:
+    for key in ("test_result", "run", "result"):
+        value = data.get(key)
+        if isinstance(value, dict):
+            return value
+    return data
+
+
+def run_failed(data: dict[str, Any]) -> bool:
+    payload = run_payload(data)
+    output = response_text(payload).lower()
+    return payload.get("passed") is False or payload.get("exit_code", 1) != 0 or "failed" in output
+
+
+def run_passed(data: dict[str, Any]) -> bool:
+    payload = run_payload(data)
+    output = response_text(payload).lower()
+    return payload.get("passed") is True or payload.get("exit_code") == 0 or "passed" in output
+
+
+def tutor_message(data: dict[str, Any]) -> str:
+    for key in ("message", "content", "guidance", "response", "tutor_message"):
+        value = data.get(key)
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            nested = tutor_message(value)
+            if nested:
+                return nested
+    return ""
+
+
+def response_text(value: Any) -> str:
+    if isinstance(value, dict):
+        return "\n".join(response_text(item) for item in value.values())
+    if isinstance(value, list):
+        return "\n".join(response_text(item) for item in value)
+    if value is None:
+        return ""
+    return str(value)
 
 
 def has_diff(diff_artifact: Any) -> bool:

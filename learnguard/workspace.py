@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .contracts import NormalCodexPath, WorkspaceAction
+from .contracts import NormalCodexPath, StudentTestResult, WorkspaceAction
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -121,6 +121,33 @@ def load_demo_repo_context(reset: bool = False) -> dict[str, Any]:
     }
 
 
+def save_student_solution(path: str, content: str) -> dict[str, Any]:
+    """Save learner-authored code to the only editable demo file."""
+    safe_path = _safe_write_path(path)
+    ensure_demo_repo(reset=False)
+    (DEMO_REPO / safe_path).write_text(content, encoding="utf-8")
+    return {
+        "path": safe_path,
+        "saved": True,
+        "content": content,
+    }
+
+
+def run_student_solution_tests(session_id: str) -> StudentTestResult:
+    """Run the fixed demo tests against the current learner-saved solution."""
+    ensure_demo_repo(reset=False)
+    result = run_two_sum_pytest()
+    return {
+        "session_id": session_id,
+        "passed": result["passed"],
+        "exit_code": result["exit_code"],
+        "stdout": result["stdout"],
+        "stderr": result["stderr"],
+        "command": result["command"],
+        "command_metadata": result["command_metadata"],
+    }
+
+
 def execute_workspace_action(action: WorkspaceAction) -> dict[str, Any]:
     """Execute one already-authorized workspace action."""
     action_type = action["type"]
@@ -144,11 +171,11 @@ def execute_workspace_action(action: WorkspaceAction) -> dict[str, Any]:
     if action_type == "generate_test_plan":
         return {"type": action_type, "test_plan": generate_test_plan()}
     if action_type == "propose_diff":
-        return {"type": action_type, "path": TARGET_FILE, "diff": proposed_patch_text(), "applied": False}
+        return redacted_patch_preview(action_type)
     if action_type == "explain_diff":
         return {"type": action_type, "explanation": explain_patch()}
     if action_type == "apply_patch":
-        return apply_solution_patch(action.get("path", ""))
+        return skipped_solution_patch(action.get("path", ""))
     if action_type == "run_command":
         return run_two_sum_pytest(action.get("command"))
     if action_type == "show_diff":
@@ -199,11 +226,14 @@ def normal_codex_path_preview() -> NormalCodexPath:
             "The student may receive a correct solution before demonstrating brute-force complexity "
             "or complement-lookup understanding."
         ),
-        "diff": proposed_patch_text(),
+        "diff": "",
+        "diff_available": False,
+        "diff_redacted": True,
         "patch_preview": {
             "path": TARGET_FILE,
             "test_command": [sys.executable, "-m", "pytest", TEST_FILE, "-q"],
-            "summary": "Replace the placeholder return with a one-pass seen-value dictionary.",
+            "summary": "A full solution patch exists but is withheld from student-facing session payloads.",
+            "redacted": True,
         },
     }
 
@@ -230,20 +260,47 @@ def explain_patch() -> list[str]:
     ]
 
 
+def redacted_patch_preview(action_type: str = "propose_diff") -> dict[str, Any]:
+    return {
+        "type": action_type,
+        "path": TARGET_FILE,
+        "diff": "",
+        "applied": False,
+        "redacted": True,
+        "summary": "Full solution diff withheld; the student should edit solution.py directly.",
+    }
+
+
+def skipped_solution_patch(path: str) -> dict[str, Any]:
+    safe_path = _safe_relative_path(path or TARGET_FILE)
+    if safe_path != TARGET_FILE:
+        raise ValueError(f"patching is only allowed for {TARGET_FILE}")
+
+    return {
+        "type": "apply_patch",
+        "path": safe_path,
+        "applied": False,
+        "auto_executed": False,
+        "diff": "",
+        "diff_redacted": True,
+        "patch_summary": "Solution patch withheld; the student must edit solution.py directly.",
+    }
+
+
 def apply_solution_patch(path: str) -> dict[str, Any]:
     safe_path = _safe_relative_path(path or TARGET_FILE)
     if safe_path != TARGET_FILE:
         raise ValueError(f"patching is only allowed for {TARGET_FILE}")
 
     target = DEMO_REPO / safe_path
-    before = target.read_text(encoding="utf-8")
     target.write_text(PATCHED_SOLUTION, encoding="utf-8")
     return {
         "type": "apply_patch",
         "path": safe_path,
         "applied": True,
         "patch_summary": "Replaced placeholder return with one-pass hash map complement lookup.",
-        "diff": _diff_text(before, PATCHED_SOLUTION),
+        "diff": "",
+        "diff_redacted": True,
     }
 
 
@@ -257,6 +314,13 @@ def run_two_sum_pytest(command: list[str] | None = None) -> dict[str, Any]:
     if command and command not in expected_commands:
         raise ValueError("only pytest tests/test_two_sum.py -q is allowed")
 
+    command_metadata = {
+        "argv": command_to_run,
+        "cwd": str(DEMO_REPO),
+        "runner": "pytest",
+        "target": TEST_FILE,
+    }
+
     completed = subprocess.run(
         command_to_run,
         cwd=DEMO_REPO,
@@ -268,6 +332,7 @@ def run_two_sum_pytest(command: list[str] | None = None) -> dict[str, Any]:
     return {
         "type": "run_command",
         "command": command_to_run,
+        "command_metadata": command_metadata,
         "cwd": str(DEMO_REPO),
         "exit_code": completed.returncode,
         "passed": completed.returncode == 0,
@@ -300,7 +365,8 @@ def summarize_git_diff() -> dict[str, Any]:
         "source": "git" if git_available else "generated",
         "has_changes": bool(diff.strip()),
         "summary": _summarize_solution_diff(current),
-        "diff": diff,
+        "diff": "",
+        "diff_redacted": True,
     }
 
 
@@ -317,6 +383,12 @@ def _safe_relative_path(path: str) -> str:
     if DEMO_REPO.resolve() not in full_path.parents and full_path != DEMO_REPO.resolve():
         raise ValueError(f"path escapes demo repo: {path}")
     return safe_path
+
+
+def _safe_write_path(path: str) -> str:
+    if path != TARGET_FILE:
+        raise ValueError(f"invalid path: only {TARGET_FILE} can be edited")
+    return TARGET_FILE
 
 
 def _diff_text(before: str, after: str) -> str:

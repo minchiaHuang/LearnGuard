@@ -28,15 +28,15 @@ AUTONOMY_LEVELS: dict[int, dict[str, Any]] = {
         "trigger": "score 2/4",
     },
     3: {
-        "name": "Diff Proposal",
-        "description": "Codex may propose a unified diff with line-by-line rationale, but may not apply it.",
-        "codex_instruction": "Produce a proposed diff and explain why each change is needed. Do not write files.",
+        "name": "Guided Implementation",
+        "description": "Codex may explain the next reasoning step, but does not provide a full patch.",
+        "codex_instruction": "Explain the approach and ask the learner to implement it. Do not create or apply a diff.",
         "trigger": "score 3/4",
     },
     4: {
-        "name": "Workspace Unlock",
-        "description": "Codex may apply the patch, run the relevant tests, and summarize the git diff.",
-        "codex_instruction": "Apply the patch, run the relevant tests, and summarize the git diff.",
+        "name": "Student Run Ready",
+        "description": "The learner has shown the concept and should validate their own saved code with Run.",
+        "codex_instruction": "Keep the student in control. Do not apply a patch; prompt the learner to run tests on their code.",
         "trigger": "score 4/4",
     },
 }
@@ -232,16 +232,12 @@ def planned_codex_actions(level: int) -> list[WorkspaceAction]:
     if level == 3:
         return [
             {"type": "read_file", "path": "solution.py", "reason": "Read target file."},
-            {"type": "propose_diff", "path": "solution.py", "reason": "Propose a patch without applying it."},
-            {"type": "explain_diff", "path": "solution.py", "reason": "Explain the proposed change."},
-            {"type": "apply_patch", "path": "solution.py", "reason": "Codex attempted to write the patch."},
-            {"type": "run_command", "command": ["pytest", "tests/test_two_sum.py", "-q"], "reason": "Codex attempted to run tests."},
+            {"type": "propose_diff", "path": "solution.py", "reason": "Patch text is withheld from student-facing responses."},
+            {"type": "explain_diff", "path": "solution.py", "reason": "Explain the concept without inserting code."},
         ]
     return [
-        {"type": "read_file", "path": "solution.py", "reason": "Read target file before applying patch."},
-        {"type": "apply_patch", "path": "solution.py", "reason": "Implement one-pass hash map lookup for Two Sum."},
-        {"type": "run_command", "command": ["pytest", "tests/test_two_sum.py", "-q"], "reason": "Run the required Two Sum test."},
-        {"type": "show_diff", "reason": "Summarize the workspace diff."},
+        {"type": "read_file", "path": "solution.py", "reason": "Read the learner's current file for context."},
+        {"type": "run_command", "command": ["pytest", "tests/test_two_sum.py", "-q"], "reason": "Student should use /api/run to validate saved code."},
     ]
 
 

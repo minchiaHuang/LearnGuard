@@ -64,6 +64,37 @@ class NormalCodexPath(TypedDict, total=False):
     risk: str
 
 
+class SavedCodeResult(TypedDict):
+    session_id: str
+    path: str
+    saved: bool
+    content: str
+
+
+class CommandMetadata(TypedDict):
+    argv: list[str]
+    cwd: str
+    runner: str
+    target: str
+
+
+class StudentTestResult(TypedDict):
+    session_id: str
+    passed: bool
+    exit_code: int
+    stdout: str
+    stderr: str
+    command: list[str]
+    command_metadata: CommandMetadata
+
+
+class TutorResponse(TypedDict):
+    role: Literal["tutor"]
+    message: str
+    hint_level: str
+    contains_solution: bool
+
+
 class VisualTraceStep(TypedDict, total=False):
     step: int
     action: str

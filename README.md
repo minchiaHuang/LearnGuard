@@ -1,104 +1,153 @@
 # LearnGuard
 
-> **Built at OpenAI Codex Hackathon Sydney - Wednesday, 29 April 2026**
+> Built at OpenAI Codex Hackathon Sydney - Wednesday, 29 April 2026
 
-Extended from prior work on Codex-native learning runtimes.
+LearnGuard is a study-mode coding IDE where students write code themselves, while Codex acts as a Socratic tutor instead of an answer generator.
 
-**One-liner:** LearnGuard is a local Codex runtime that blocks answer-like coding actions until the learner proves the concept behind the fix.
+Pitch:
 
----
+> Codex can write any LeetCode solution in 5 seconds. LearnGuard puts Codex in study mode - it teaches you how to write it yourself.
 
-## What Was Built Today (Hackathon Extensions)
-
-- **MCP server** (`mcp_server.py`) - wraps the LearnGuard gate as Codex CLI tool calls via the Model Context Protocol
-- **Codex-native approval flow foundation** - the MCP tools expose judge scoring, gate decisions, and guarded workspace execution
-
-## Next Hackathon Extensions
-
-- **IDE + chat layout** - redesign frontend with split pane: code context on the left, gate feed on the right
-- **WebSocket live stream** - push Codex action events to the browser as the gate evaluates them
+Original repository: https://github.com/minchiaHuang/LearnGuard
 
 ---
 
-## What Already Existed (Base Code)
+## What Was Built Today
 
-The following components were built prior to the hackathon and are the foundation this submission extends:
+For the OpenAI Codex Hackathon, the prior LearnGuard learning backend was extended with:
 
-- `learnguard/gate.py` - five-level Codex permission gate
-- `learnguard/agents.py` - Coordinator, Solver, Socratic, Judge, Explainer agents
+- **Native macOS SwiftUI study shell** - Explorer, code context, Tutor, Visual trace, and comprehension status
+- **Codex study-mode Tutor** - Socratic prompts that guide the learner instead of pasting a full answer
+- **Visual algorithm explainer** - a Two Sum hash map trace for concept understanding
+- **Background comprehension tracker** - score, missing concepts, hint depth, and Learning Debt state
+- **Codex-native MCP server and tests** - local tool integration for gate and comprehension experiments
+- **Formal product spec** - `SPEC.md` defines the student-first target MVP
+
+The SwiftUI app is the primary demo direction. The existing web frontend remains as a fallback demo surface.
+
+## Product Direction
+
+The student is the main actor:
+
+1. The student edits `solution.py`.
+2. The student asks the Tutor when stuck.
+3. The Tutor asks a question or gives a small hint.
+4. The Visual tab explains the concept.
+5. The student improves the code.
+6. Run validates the student's own solution.
+
+The old permission gate remains useful internally, but it is no longer the main product story. LearnGuard tracks understanding in the background while the student solves.
+
+## Product Maturity
+
+This repository contains the hackathon MVP. It demonstrates the core student-first workflow, but production readiness would require persistence, authentication, sandboxed execution, multi-problem support, arbitrary repository support, and full Codex tutor orchestration.
+
+## What Already Existed
+
+The base LearnGuard project provided the learning guard runtime:
+
+- `learnguard/gate.py` - five-level comprehension and workspace policy
+- `learnguard/agents.py` - deterministic Solver, Socratic, Judge, and Explainer agents
 - `learnguard/agent_runtime.py` - OpenAI Agents SDK facade with deterministic local fallback
-- `learnguard/app.py` - FastAPI backend with session, answer, and eval endpoints
+- `learnguard/app.py` - FastAPI backend with session, answer, eval, and static frontend routes
 - `learnguard/workspace.py` - allowlisted workspace runner for `demo_repo/`
 - `learnguard/reports.py` - Learning Debt report generator
-- `demo_repo/` - failing Two Sum repo (controlled demo task)
-- `tests/` - pytest suite covering gate, judge evals, and API smoke
+- `demo_repo/` - failing Two Sum repo used as the controlled learning task
+- `tests/` - pytest coverage for the base gate, API, judge evals, and concept graph
 
-Original repository: https://github.com/minchiaHuang/test
+## Current Branch State
 
----
+Implemented now:
 
-## Core Idea
+- FastAPI learning backend
+- deterministic Socratic tutor, judge, and visual explainer
+- SwiftPM macOS app shell
+- web fallback demo
+- MCP server
+- Swift and Python tests
+- formal `SPEC.md`
+- updated `ARCHITECTURE.md`
 
-**Learning Debt** is the gap between what Codex completed and what the learner proved they understood.
+Student editor/API contract for this branch:
 
-LearnGuard measures and reduces that debt inside the Codex workflow:
-
-1. Detect the concept being outsourced
-2. Pause before answer-like assistance
-3. Ask the learner to reason, predict, or trace
-4. Judge comprehension with a rubric
-5. Unlock the next appropriate Codex workspace permission
-6. Generate a Learning Debt report after the task
-
----
-
-## Codex Permission Levels
-
-| Level | Name | Codex Permission |
-|------:|------|-----------------|
-| 0 | Question Only | Ask a checkpoint question. No repo inspection or implementation. |
-| 1 | Read-Only Orientation | Read problem and failing test. Name the algorithm pattern only. |
-| 2 | Plan + Test Strategy | Read relevant files. Produce pseudocode and test strategy. No patch. |
-| 3 | Diff Proposal | Propose a unified diff with rationale. Do not apply it. |
-| 4 | Workspace Unlock | Apply patch, run `pytest`, and summarize `git diff`. |
-
----
+- editable SwiftUI `solution.py` editor backed by `POST /api/code`
+- Run button backed by `POST /api/run`, validating the student's saved code with pytest
+- Tutor chat backed by `POST /api/tutor`, receiving the learner message and current code
+- Tutor responses must return `contains_solution: false` and avoid full solution code
+- UI copy fully aligned to the student-first study-mode flow
 
 ## Tech Stack
 
 | Layer | Choice |
 |-------|--------|
-| Agent orchestration | OpenAI Agents SDK with deterministic local fallback |
-| MCP server | Python MCP SDK (stdio transport) |
+| Native frontend | SwiftUI macOS app via SwiftPM |
 | Backend | FastAPI |
-| Frontend | HTML + CSS + vanilla JS (IDE + chat layout) |
-| Real-time | WebSocket for live gate feed |
+| Tutor engine | OpenAI Agents SDK facade with deterministic local fallback |
+| Web fallback | HTML + CSS + vanilla JS |
+| MCP server | Local stdio JSON-RPC server |
 | Workspace runner | Python subprocess + allowlist |
-| Verification | `pytest` and `git diff` |
-
----
+| Verification | `pytest`, smoke script, `swift build`, and `swift test` |
 
 ## Running Locally
 
+Start the FastAPI backend:
+
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/python -m uvicorn learnguard.app:app --host 127.0.0.1 --port 8788
 ```
 
-Open `http://127.0.0.1:8788`.
+Open the web fallback at:
 
-Run smoke tests:
+```text
+http://127.0.0.1:8788
+```
+
+Run the native macOS app:
+
+```bash
+swift run LearnGuardApp
+```
+
+Or open `Package.swift` in Xcode and run the `LearnGuardApp` executable target.
+
+## Verification
+
+Automated backend/API proof:
 
 ```bash
 .venv/bin/python -m pytest tests -q
+```
+
+Automated HTTP smoke against a running FastAPI server:
+
+```bash
 .venv/bin/python scripts/smoke_demo.py --base-url http://127.0.0.1:8788
 ```
 
----
+The smoke script writes failing and passing learner code through `/api/code` and `/api/run`, then restores `demo_repo/solution.py` to the exact content it had before smoke execution.
+
+Automated Swift package checks:
+
+```bash
+swift build
+swift test
+```
+
+Manual native SwiftUI smoke:
+
+- backend offline state renders without crashing
+- backend online health check passes
+- Start Session loads the Socratic checkpoint
+- Tutor does not provide full solution code
+- Visual trace explains the hash map concept
+- score and Learning Debt render as background feedback
+
+Manual native smoke is an app-behavior checklist. It is separate from the automated HTTP smoke script and should be recorded by the person running the macOS app.
 
 ## Hackathon Submission
 
 - **Team:** minchiaHuang
 - **Event:** OpenAI Codex Hackathon Sydney, 29 April 2026
-- **Build direction:** Agentic Coding - developer tools that maximise leverage from Codex as an AI coding agent
+- **Build direction:** Codex as a teacher, not as a coder
