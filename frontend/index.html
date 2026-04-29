@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LearnGuard Runtime</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-group">
+          <div class="brand-mark" aria-hidden="true">LG</div>
+          <div>
+            <h1>LearnGuard Runtime</h1>
+            <p>Codex workspace permissions controlled by learner comprehension.</p>
+          </div>
+        </div>
+        <div class="runtime-strip" aria-label="Runtime status">
+          <span id="apiStatus" class="status-pill neutral">API not checked</span>
+          <span id="agentModeStatus" class="status-pill neutral">Local fallback</span>
+          <span id="sessionStatus" class="status-pill">No active session</span>
+          <span id="levelStatus" class="status-pill">Level 0</span>
+        </div>
+      </header>
+
+      <main class="panel-grid" aria-label="LearnGuard four panel runtime">
+        <section class="panel repo-panel" aria-labelledby="repoPanelTitle">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Repo Task</p>
+              <h2 id="repoPanelTitle">Fix the failing Two Sum test</h2>
+            </div>
+            <div class="header-actions">
+              <button id="demoPathButton" class="secondary-action" type="button">
+                Run Demo Path
+              </button>
+              <button id="startSessionButton" class="primary-action" type="button">
+                Start Session
+              </button>
+            </div>
+          </div>
+
+          <div class="repo-meta" aria-label="Repo task files">
+            <div>
+              <span class="meta-label">Problem</span>
+              <strong id="problemFile">problem.md</strong>
+            </div>
+            <div>
+              <span class="meta-label">Target</span>
+              <strong id="targetFile">solution.py</strong>
+            </div>
+            <div>
+              <span class="meta-label">Failing Test</span>
+              <strong id="testFile">tests/test_two_sum.py</strong>
+            </div>
+          </div>
+
+          <div class="section-block">
+            <div class="section-title-row">
+              <h3>Checkpoint</h3>
+              <span id="checkpointConcept" class="mini-tag">brute_force_complexity</span>
+            </div>
+            <p id="checkpointQuestion" class="checkpoint-text">
+              Start a session to load the Socratic checkpoint.
+            </p>
+            <ul id="rubricList" class="rubric-list" aria-label="Checkpoint rubric"></ul>
+          </div>
+
+          <form id="answerForm" class="answer-form">
+            <label for="answerInput">Learner Answer</label>
+            <textarea
+              id="answerInput"
+              name="answer"
+              rows="5"
+              placeholder="Explain the brute-force approach, its complexity, and how complement lookup improves it."
+            ></textarea>
+            <div class="answer-actions">
+              <button id="partialAnswerButton" class="secondary-action" type="button">
+                Use Partial Answer
+              </button>
+              <button id="fullAnswerButton" class="secondary-action" type="button">
+                Use Full Concept Answer
+              </button>
+              <button class="primary-action" type="submit">Submit Answer</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel trace-panel" aria-labelledby="tracePanelTitle">
+          <div class="panel-header compact">
+            <div>
+              <p class="panel-kicker">Agent Trace</p>
+              <h2 id="tracePanelTitle">Runtime architecture proof</h2>
+            </div>
+            <span id="traceCount" class="count-pill">0 events</span>
+          </div>
+          <ol id="traceList" class="trace-list" aria-live="polite"></ol>
+        </section>
+
+        <section class="panel artifact-panel" aria-labelledby="artifactPanelTitle">
+          <div class="panel-header compact">
+            <div>
+              <p class="panel-kicker">Proposed Patch / Workspace Artifact</p>
+              <h2 id="artifactPanelTitle">Gated Codex output</h2>
+            </div>
+          </div>
+
+          <div id="blockedAction" class="blocked-action" hidden></div>
+
+          <div class="visual-trace-section">
+            <div class="section-title-row">
+              <div>
+                <h3>Two Sum Visual Trace</h3>
+                <p id="visualTraceInsight" class="trace-caption">
+                  Step through the hash map state after the explainer runs.
+                </p>
+              </div>
+              <span id="visualTraceCounter" class="mini-tag">Step 0/0</span>
+            </div>
+
+            <div class="visual-trace-card">
+              <div class="visual-trace-main">
+                <div>
+                  <span class="meta-label">Problem</span>
+                  <strong id="visualTraceProblem">Two Sum</strong>
+                </div>
+                <div>
+                  <span class="meta-label">Current Action</span>
+                  <p id="visualTraceAction">Start a session to load trace steps.</p>
+                </div>
+              </div>
+
+              <div class="map-state-grid" aria-label="Two Sum map state">
+                <div>
+                  <span class="meta-label">Map Before</span>
+                  <pre id="visualMapBefore" class="map-state-output">{}</pre>
+                </div>
+                <div>
+                  <span class="meta-label">Question</span>
+                  <p id="visualTraceQuestion">Waiting for trace.</p>
+                </div>
+                <div>
+                  <span class="meta-label">Result</span>
+                  <p id="visualTraceResult">Waiting for gate output.</p>
+                </div>
+                <div>
+                  <span class="meta-label">Map After</span>
+                  <pre id="visualMapAfter" class="map-state-output">{}</pre>
+                </div>
+              </div>
+
+              <div class="trace-step-controls">
+                <button id="visualPrevButton" class="secondary-action" type="button">
+                  Previous
+                </button>
+                <button id="visualNextButton" class="secondary-action" type="button">
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="artifact-layout">
+            <div class="artifact-section">
+              <div class="section-title-row">
+                <h3>Pseudocode</h3>
+                <span id="pseudocodeStatus" class="mini-tag">locked</span>
+              </div>
+              <pre id="pseudocodeOutput" class="code-output">Start a session to request gated workspace help.</pre>
+            </div>
+
+            <div class="artifact-section">
+              <div class="section-title-row">
+                <h3>Test Strategy</h3>
+                <span id="testStrategyStatus" class="mini-tag">locked</span>
+              </div>
+              <pre id="testStrategyOutput" class="code-output">Tests unlock after the comprehension gate allows them.</pre>
+            </div>
+
+            <div class="artifact-section wide">
+              <div class="section-title-row">
+                <h3>Patch / Diff Summary</h3>
+                <span id="diffStatus" class="mini-tag">pending</span>
+              </div>
+              <pre id="diffOutput" class="code-output">No diff generated yet.</pre>
+            </div>
+
+            <div class="artifact-section wide">
+              <div class="section-title-row">
+                <h3>Pytest Output</h3>
+                <span id="pytestStatus" class="mini-tag">locked</span>
+              </div>
+              <pre id="pytestOutput" class="code-output">pytest is blocked until Level 4 Workspace Unlock.</pre>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel gate-panel" aria-labelledby="gatePanelTitle">
+          <div class="panel-header compact">
+            <div>
+              <p class="panel-kicker">Comprehension Gate / Learning Report</p>
+              <h2 id="gatePanelTitle">Permission state</h2>
+            </div>
+            <div id="scoreBadge" class="score-badge">0/4</div>
+          </div>
+
+          <div class="level-strip" aria-label="Autonomy level">
+            <div id="levelMeter" class="level-meter"></div>
+            <div>
+              <strong id="levelName">Level 0 - Question Only</strong>
+              <p id="levelDescription">Codex must ask a checkpoint before touching the workspace.</p>
+            </div>
+          </div>
+
+          <div class="path-comparison">
+            <div class="section-title-row">
+              <h3>Normal Codex Path vs LearnGuard Gated Path</h3>
+              <span id="comparisonStatus" class="mini-tag">Gate ready</span>
+            </div>
+            <div class="comparison-grid">
+              <div class="comparison-card risk">
+                <div class="comparison-card-header">
+                  <h3>Normal Codex path</h3>
+                  <span id="normalPathStatus" class="mini-tag">Direct patch risk</span>
+                </div>
+                <ul>
+                  <li>Student asks for the fix.</li>
+                  <li>Codex can jump straight to editing solution.py.</li>
+                  <li>The patch may pass tests before the student explains the concept.</li>
+                </ul>
+              </div>
+              <div class="comparison-card gated">
+                <div class="comparison-card-header">
+                  <h3>LearnGuard gated path</h3>
+                  <span id="gatedPathStatus" class="mini-tag">Waiting for gate</span>
+                </div>
+                <ul>
+                  <li>Level 2 blocks apply_patch and run_command.</li>
+                  <li>Codex is downgraded to pseudocode and test strategy.</li>
+                  <li>Level 4 unlocks patch, pytest, and git diff after concept proof.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="permission-grid">
+            <div>
+              <h3>Allowed Actions</h3>
+              <div id="allowedActions" class="chip-list"></div>
+            </div>
+            <div>
+              <h3>Blocked Actions</h3>
+              <div id="blockedActions" class="chip-list"></div>
+            </div>
+          </div>
+
+          <div class="report-grid">
+            <div>
+              <h3>Missing Concepts</h3>
+              <ul id="missingConcepts" class="concept-list"></ul>
+            </div>
+            <div>
+              <h3>Learning Report</h3>
+              <dl id="learningReport" class="report-list"></dl>
+            </div>
+          </div>
+
+          <div class="eval-section">
+            <div class="section-title-row">
+              <h3>Judge Eval Table</h3>
+              <span id="evalSummary" class="mini-tag">loading</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Case</th>
+                    <th>Expected</th>
+                    <th>Actual</th>
+                    <th>Gate</th>
+                    <th>Pass</th>
+                  </tr>
+                </thead>
+                <tbody id="evalTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
