@@ -43,7 +43,11 @@ WORKSPACE_ACTION_POLICIES: dict[int, dict[str, Any]] = {
 }
 
 
-def enforce_codex_action(level: int, action: WorkspaceAction) -> GateDecision:
+def enforce_codex_action(
+    level: int,
+    action: WorkspaceAction,
+    allowed_paths: list[str] | set[str] | tuple[str, ...] | None = None,
+) -> GateDecision:
     """Return an allow/block decision for a planned Codex workspace action."""
     policy = WORKSPACE_ACTION_POLICIES.get(level)
     if policy is None:
@@ -56,6 +60,7 @@ def enforce_codex_action(level: int, action: WorkspaceAction) -> GateDecision:
 
     action_type = action.get("type")
     path = _normalize_path(action.get("path"))
+    path_allowlist = set(allowed_paths if allowed_paths is not None else policy["allowed_paths"])
     violations: list[str] = []
 
     if not action_type:
@@ -66,7 +71,7 @@ def enforce_codex_action(level: int, action: WorkspaceAction) -> GateDecision:
     if action_type and action_type not in policy["allowed_actions"]:
         violations.append(f"action not explicitly allowed at level {level}: {action_type}")
 
-    if path and path not in policy["allowed_paths"]:
+    if path and path not in path_allowlist:
         violations.append(f"path not allowed at level {level}: {path}")
 
     if action.get("path") and not path:
