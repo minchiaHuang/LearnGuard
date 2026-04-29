@@ -22,10 +22,13 @@ struct TutorView: View {
                     .frame(height: 1)
             }
 
-            if state.selectedRightPane == .tutor {
+            switch state.selectedRightPane {
+            case .tutor:
                 tutorPanel
-            } else {
+            case .visual:
                 visualPanel
+            case .redTeam:
+                RedTeamView(state: state)
             }
         }
         .background(LGStyle.panelBackground)

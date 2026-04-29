@@ -52,6 +52,10 @@ struct LearnGuardAPI {
         try await send(path: "/api/evals", method: "GET")
     }
 
+    func redTeam() async throws -> RedTeamResult {
+        try await send(path: "/api/redteam", method: "GET")
+    }
+
     private func send<Response: Decodable>(
         path: String,
         method: String,
