@@ -351,6 +351,12 @@ def evals() -> dict[str, Any]:
     }
 
 
+@app.get("/api/redteam")
+def red_team() -> dict[str, Any]:
+    from learnguard.redteam import run_red_team
+    return run_red_team()
+
+
 def _require_session(session_id: str) -> dict[str, Any]:
     session = _sessions.get(session_id)
     if not session:

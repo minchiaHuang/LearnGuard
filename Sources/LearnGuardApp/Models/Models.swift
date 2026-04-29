@@ -367,6 +367,29 @@ enum CodePane: String, CaseIterable, Identifiable {
 enum RightPane: String, CaseIterable, Identifiable {
     case tutor = "Tutor"
     case visual = "Visual"
+    case redTeam = "Red Team"
 
     var id: String { rawValue }
+}
+
+struct RedTeamCase: Decodable, Identifiable {
+    var id: String { name }
+    let name: String
+    let category: String
+    let description: String
+    let level: Int
+    let shouldBlock: Bool
+    let blocked: Bool
+    let passed: Bool
+    let violations: [String]
+}
+
+struct RedTeamResult: Decodable {
+    let cases: [RedTeamCase]
+    let total: Int
+    let attacks: Int
+    let blockedAttacks: Int
+    let allPassed: Bool
+    let blockRate: String
+    let precision: String
 }
