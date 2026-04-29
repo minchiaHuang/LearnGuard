@@ -108,7 +108,7 @@ The target macOS MVP uses a desktop IDE layout:
   - Tutor chat for Socratic guidance
   - Visual trace for algorithm reasoning
   - Scoreboard for comprehension, MCP gate policy, leakage, and red-team evals
-  - Script for the two-minute MCP action-gate demo flow
+  - Script for the fast caption MCP action-gate recording flow
 - Top actions
   - Demo
   - Run
@@ -159,6 +159,7 @@ Current implemented pieces:
 - Eval Scoreboard sections for Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval
 - `skills.md` memory generation and API surface
 - UI copy aligned to MCP action gating and the SwiftUI Scoreboard proof surface
+- fast caption demo rehearsal that fits inside the strict 2-minute submission limit
 - Swift and Python tests for the current contracts
 
 Codex CLI integration is a demo configuration, not a global repository guarantee. Claims about Codex calling the MCP gate are valid only after the local LearnGuard MCP tools are visible in the active Codex session.

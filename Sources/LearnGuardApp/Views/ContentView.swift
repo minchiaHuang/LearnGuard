@@ -268,9 +268,10 @@ private struct DemoCaptionOverlay: View {
             }
 
             Text(state.demoCaption)
-                .font(.system(size: 18, weight: .semibold))
-                .lineSpacing(4)
+                .font(.system(size: 21, weight: .bold))
+                .lineSpacing(5)
                 .foregroundStyle(Color.white)
+                .minimumScaleFactor(0.82)
                 .fixedSize(horizontal: false, vertical: true)
 
             GeometryReader { proxy in
@@ -284,9 +285,9 @@ private struct DemoCaptionOverlay: View {
             }
             .frame(height: 6)
         }
-        .padding(18)
-        .frame(maxWidth: 780, alignment: .leading)
-        .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 10))
+        .padding(20)
+        .frame(maxWidth: 920, alignment: .leading)
+        .background(.black.opacity(0.86), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.18)))
         .shadow(color: .black.opacity(0.25), radius: 18, y: 8)
         .animation(.easeInOut(duration: 0.25), value: state.demoCaption)

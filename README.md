@@ -8,7 +8,7 @@ Pitch:
 
 > Codex can write any LeetCode solution in 5 seconds. LearnGuard makes student understanding the permission layer: no understanding, no Codex action.
 
-Original repository: https://github.com/minchiaHuang/LearnGuard
+Submission repository: https://github.com/minchiaHuang/LearnGuard
 
 ---
 
@@ -63,17 +63,18 @@ Red-team cases included in the final panel:
 
 **Block rate: 8/8 · Legitimate pass rate: 2/2 · Precision: 100%**
 
-## Two-minute Live Demo Script
+## Demo Recording Path
 
-Make the MCP action gate the official story. Use the SwiftUI app to show the learner workflow and proof numbers, then keep the web fallback available if the native app is not suitable on the recording machine.
+Make the MCP action gate the official story. The SwiftUI app includes a fast caption-only rehearsal path that fits comfortably inside the strict 2-minute video limit, with optional speaker notes if voiceover is used. Keep the web fallback available if the native app is not suitable on the recording machine.
 
 | Time | Action | Say |
 |---|---|---|
-| 0:00-0:20 | Run MCP preflight. Show the required Codex tools are visible, then start a clean Two Sum session at Level 0. | "Codex normally wants to jump straight to the solution." |
-| 0:20-0:45 | In Codex, attempt the Level 0 `apply_patch` dry-run and show the MCP gate blocks it. | "The learner's comprehension is the permission layer." |
-| 0:45-1:10 | Enter or use the prepared full checkpoint answer. Show score reaches `4/4` and the level rises. | "The student earns more workspace capability by explaining the concept." |
-| 1:10-1:40 | Retry the same action as a Level 4 dry-run, then open Scoreboard. | "LearnGuard does not just teach. It measures whether Codex action rights were earned." |
-| 1:40-2:00 | Show the `skills.md` preview as Learning Debt memory. | "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act." |
+| 0:00-0:08 | Open with the product claim. | "Codex solves code fast. LearnGuard asks whether the learner earned the right to let Codex act." |
+| 0:08-0:18 | Show the IDE and action trace. | "The trace is live backend state: session, blocked actions, score, evals, and skills.md." |
+| 0:18-0:30 | Show the Level 0 block. | "No understanding, no write autonomy." |
+| 0:30-0:43 | Submit the full checkpoint answer and show `4/4`. | "The permission changes because understanding changed." |
+| 0:43-0:55 | Open Scoreboard. | "Comprehension, gate policy, red-team, and leakage evals prove the workflow." |
+| 0:55-1:10 | Show `skills.md` memory and close. | "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act." |
 
 ## Product Direction
 
@@ -131,7 +132,7 @@ Implemented now:
 - built-in problem catalog for small onboarding tasks
 - Eval Scoreboard with comprehension, gate policy, leakage, and red-team sections
 - `skills.md` learner memory artifact
-- two-minute demo script panel in the SwiftUI app
+- fast caption demo script panel in the SwiftUI app
 - Swift and Python tests
 - formal `SPEC.md`
 - updated `ARCHITECTURE.md`
@@ -223,7 +224,7 @@ Manual native SwiftUI smoke:
 - Scoreboard shows Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval
 - `skills.md` preview appears after a checkpoint answer
 
-Manual native smoke is an app-behavior checklist. It should be rehearsed after the backend pytest, HTTP smoke checks, and MCP preflight. For the official two-minute demo, rehearse the MCP flow with the SwiftUI Scoreboard open and keep the final line exact: "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act."
+Manual native smoke is an app-behavior checklist. It should be rehearsed after the backend pytest, HTTP smoke checks, and MCP preflight. For the official video, use the fast caption demo with the SwiftUI Scoreboard open and keep the final line exact: "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act."
 
 ## MCP And Codex Integration
 
@@ -289,6 +290,7 @@ codex "$(cat scripts/codex_demo_prompt.md)"
 ## Hackathon Submission
 
 - **Team:** minchiaHuang
+- **Project title:** LearnGuard: A Comprehension Gate for Codex
 - **Event:** OpenAI Codex Hackathon Sydney, 29 April 2026
 - **Build direction:** Codex as a gated teacher, not an unearned coder
 

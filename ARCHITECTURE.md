@@ -145,7 +145,7 @@ Current implemented flow:
 | Visual Explainer | Shows concrete algorithm traces such as Two Sum hash map state. |
 | Scoreboard | Shows sectioned eval proof for comprehension scoring, gate policy, leakage prevention, and red-team resistance. |
 | Codex Agent Action Trace | Shows live gate evidence: MCP preflight, blocked action, unlocked action, eval proof, and skills memory state. |
-| Demo Script | Keeps the live two-minute demo path inside the primary SwiftUI app. |
+| Demo Script | Keeps the fast caption recording path inside the primary SwiftUI app. |
 | FastAPI Backend | Owns session state, task context, scoring, tutor responses, visual traces, evals, memory, and test execution. |
 | Problem Catalog | Provides local built-in tasks for repeatable onboarding and smoke rehearsal. |
 | Comprehension Judge | Scores learner answers and identifies missing concepts. |
@@ -322,7 +322,7 @@ erDiagram
 - The primary UI shows a student editor, Tutor tab, and Visual tab.
 - The Scoreboard shows comprehension, gate policy, leakage, and red-team proof.
 - The Codex Agent Action Trace shows blocked and allowed workspace actions.
-- The Script tab supports the strict two-minute demo path.
+- The Script tab supports a fast caption path that fits inside the strict two-minute video limit.
 - The student remains responsible for the code.
 - The Tutor never gives a full solution.
 - The Visual trace explains the algorithm concept.

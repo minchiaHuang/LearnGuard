@@ -5,37 +5,37 @@ struct DemoScriptView: View {
 
     private let timeline = [
         DemoScriptStep(
-            time: "0:00-0:15",
+            time: "0:00-0:08",
             title: "Opening",
             action: "Introduce LearnGuard.",
             line: "Codex can solve the task. LearnGuard checks whether the learner earned the right to let Codex act."
         ),
         DemoScriptStep(
-            time: "0:15-0:35",
+            time: "0:08-0:18",
             title: "Live Trace",
             action: "Show the IDE and the Codex Agent Action Trace.",
             line: "The trace is driven by live backend state: session, agent events, blocked actions, score, evals, and skills memory."
         ),
         DemoScriptStep(
-            time: "0:35-0:55",
+            time: "0:18-0:30",
             title: "Level 0 Block",
             action: "Show the real Level 0 backend block.",
             line: "No understanding, no write autonomy."
         ),
         DemoScriptStep(
-            time: "0:55-1:15",
+            time: "0:30-0:43",
             title: "Unlock",
             action: "Submit the full checkpoint answer and show 4/4.",
             line: "The permission changes because understanding changed."
         ),
         DemoScriptStep(
-            time: "1:15-1:40",
+            time: "0:43-0:55",
             title: "Scoreboard",
             action: "Open Scoreboard and point to the eval sections.",
             line: "Comprehension, gate policy, red-team, and leakage evals prove the workflow."
         ),
         DemoScriptStep(
-            time: "1:40-2:00",
+            time: "0:55-1:10",
             title: "skills.md Memory",
             action: "Show skills.md preview and close.",
             line: "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act."
@@ -119,20 +119,20 @@ struct DemoScriptView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("2-Minute Demo Script")
+            Text("Fast Caption Demo Script")
                 .font(.headline)
                 .foregroundStyle(LGStyle.text)
-            Text("Live SwiftUI flow: Demo -> Checkpoint -> Scoreboard -> skills.md.")
+            Text("Caption-only flow: Demo -> Checkpoint -> Scoreboard -> skills.md.")
                 .font(.caption)
                 .foregroundStyle(LGStyle.secondary)
-            Text("Use Run 2-Min Auto Demo, then read the active Speaker Notes block.")
+            Text("No voiceover needed. The overlay text carries the pitch in about 70 seconds.")
                 .font(.caption2)
                 .foregroundStyle(LGStyle.secondary)
         }
     }
 
     private var controls: some View {
-        SectionCard(title: "Auto Demo", subtitle: "Runs the live two-minute gate workflow") {
+        SectionCard(title: "Auto Demo", subtitle: "Runs the fast caption-only gate workflow") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     Button {
@@ -142,7 +142,7 @@ struct DemoScriptView: View {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
-                            Label("Run 2-Min Auto Demo", systemImage: "play.circle.fill")
+                            Label("Run Fast Caption Demo", systemImage: "play.circle.fill")
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -174,7 +174,7 @@ struct DemoScriptView: View {
     }
 
     private var demoChart: some View {
-        SectionCard(title: "Live Demo Meter", subtitle: "Subtitles appear over the product while the flow runs") {
+        SectionCard(title: "Live Demo Meter", subtitle: "Large subtitles appear over the product while the flow runs") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text(state.demoElapsedText)
@@ -235,7 +235,7 @@ struct DemoScriptView: View {
 
     private var activeSpeakerCard: some View {
         let block = activeSpeakerBlock
-        return SectionCard(title: "Current Speaker Cue", subtitle: "Auto-updates with the two-minute demo") {
+        return SectionCard(title: "Current Caption Cue", subtitle: "Auto-updates with the fast demo") {
             VStack(alignment: .leading, spacing: 6) {
                 Text(block.title)
                     .font(.caption.weight(.bold))
@@ -250,7 +250,7 @@ struct DemoScriptView: View {
     }
 
     private var speakerCard: some View {
-        SectionCard(title: "Full Speaker Notes", subtitle: "Backup script for rehearsal") {
+        SectionCard(title: "Full Text Backup", subtitle: "Use only if you decide to speak") {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(speakerBlocks) { block in
                     VStack(alignment: .leading, spacing: 5) {

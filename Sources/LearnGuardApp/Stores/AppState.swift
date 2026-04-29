@@ -26,7 +26,8 @@ final class AppState: ObservableObject {
     @Published var isAutoDemoRunning = false
     @Published var demoOverlayVisible = false
     @Published var demoCaptionTitle = "Ready"
-    @Published var demoCaption = "Open Script and run the two-minute demo."
+    @Published var demoCaption = "Open Script and run the fast caption demo."
+    @Published var demoTutorIsTyping = false
     @Published var demoProgress = 0.0
     @Published var demoElapsedText = "0:00"
 
@@ -350,81 +351,83 @@ final class AppState: ObservableObject {
         await setDemoStage(
             index: 0,
             title: "Opening",
-            caption: "Codex can solve LeetCode in seconds. LearnGuard checks whether the learner earned the right to let Codex act.",
+            caption: "Codex solves code fast. LearnGuard asks: did the learner earn the right to let Codex act?",
             progress: 0.0,
             elapsed: "0:00",
-            duration: 15 * durationScale
+            duration: 8 * durationScale
         )
-        await pauseDemo(seconds: 15 * durationScale)
+        await pauseDemo(seconds: 8 * durationScale)
 
         await setDemoStage(
             index: 1,
             title: "Live Trace",
-            caption: "The Codex Agent Action Trace is driven by live backend state: session, agent_trace, blocked actions, score, evals, and memory.",
-            progress: 0.13,
-            elapsed: "0:15",
-            duration: 20 * durationScale
+            caption: "The bottom trace is live app state: backend session, agent_trace, blocked actions, score, evals, and skills.md.",
+            progress: 0.14,
+            elapsed: "0:08",
+            duration: 10 * durationScale
         )
         await startSessionForAutoDemo()
-        await pauseDemo(seconds: 20 * durationScale)
+        await pauseDemo(seconds: 10 * durationScale)
 
         await setDemoStage(
             index: 2,
             title: "Gate Blocks Codex",
-            caption: "At Level 0, the backend records a blocked workspace action. No understanding, no write autonomy.",
-            progress: 0.29,
-            elapsed: "0:35",
-            duration: 20 * durationScale
+            caption: "Level 0 goes to the backend. The gate records a blocked workspace action. No understanding, no write autonomy.",
+            progress: 0.30,
+            elapsed: "0:18",
+            duration: 12 * durationScale
         )
         selectedRightPane = .tutor
         selectedPane = .solution
+        await typeTutorDraftForDemo("I'm not sure, just write the code for me.", durationScale: durationScale)
         await submitAutoDemoAnswer("I'm not sure, just write the code for me.", refreshProof: false)
-        await pauseDemo(seconds: 20 * durationScale)
+        await pauseDemo(seconds: 8 * durationScale)
 
         await setDemoStage(
             index: 3,
             title: "Checkpoint Unlock",
-            caption: "The learner explains brute force, O(n squared), and complement lookup. The score reaches 4 out of 4.",
-            progress: 0.46,
-            elapsed: "0:55",
-            duration: 20 * durationScale
+            caption: "The learner explains O(n squared) brute force and O(n) complement lookup. Score: 4/4. Higher actions unlock.",
+            progress: 0.50,
+            elapsed: "0:30",
+            duration: 13 * durationScale
         )
-        tutorDraft = fullDemoAnswer
+        await typeTutorDraftForDemo(fullDemoAnswer, durationScale: durationScale)
         await checkUnderstanding()
-        await pauseDemo(seconds: 20 * durationScale)
+        await pauseDemo(seconds: 8 * durationScale)
 
         await setDemoStage(
             index: 4,
             title: "Eval Scoreboard",
-            caption: "The Scoreboard proves comprehension, gate policy, red-team resistance, and leakage control.",
-            progress: 0.63,
-            elapsed: "1:15",
-            duration: 25 * durationScale
+            caption: "The Scoreboard proves the workflow: comprehension, gate policy, red-team resistance, and leakage control.",
+            progress: 0.68,
+            elapsed: "0:43",
+            duration: 12 * durationScale
         )
         selectedRightPane = .scoreboard
         await fetchScoreboard()
-        await pauseDemo(seconds: 25 * durationScale)
+        await pauseDemo(seconds: 12 * durationScale)
 
         await setDemoStage(
             index: 5,
             title: "skills.md Memory",
-            caption: "Learning Debt becomes skills.md memory: what the learner proved, what is weak, and what comes next.",
-            progress: 0.83,
-            elapsed: "1:40",
-            duration: 20 * durationScale
+            caption: "skills.md records Learning Debt: proven skills, weak concepts, and the next task.",
+            progress: 0.84,
+            elapsed: "0:55",
+            duration: 10 * durationScale
         )
         selectedRightPane = .scoreboard
-        await pauseDemo(seconds: 15 * durationScale)
+        await pauseDemo(seconds: 10 * durationScale)
 
         await finishDemoStage(duration: 5 * durationScale)
     }
 
     func resetAutoDemoScript() {
+        demoTutorIsTyping = false
         demoScriptStepIndex = 0
         isAutoDemoRunning = false
         demoOverlayVisible = false
         demoCaptionTitle = "Ready"
-        demoCaption = "Open Script and run the two-minute demo."
+        demoCaption = "Open Script and run the fast caption demo."
         demoProgress = 0.0
         demoElapsedText = "0:00"
         selectedRightPane = .script
@@ -474,6 +477,10 @@ final class AppState: ObservableObject {
 
     private func submitAutoDemoAnswer(_ answer: String, refreshProof: Bool) async {
         guard let sessionId else { return }
+
+        if tutorDraft.trimmingCharacters(in: .whitespacesAndNewlines) == answer.trimmingCharacters(in: .whitespacesAndNewlines) {
+            tutorDraft = ""
+        }
 
         tutorMessages.append(
             TutorMessage(
@@ -526,11 +533,30 @@ final class AppState: ObservableObject {
     private func finishDemoStage(duration: Double) async {
         withAnimation(.linear(duration: max(duration, 0.1))) {
             demoProgress = 1.0
-            demoElapsedText = "2:00"
+            demoElapsedText = "1:10"
             demoCaptionTitle = "Closing Line"
             demoCaption = "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act."
         }
         await pauseDemo(seconds: max(duration, 0.1))
+    }
+
+    private func typeTutorDraftForDemo(_ text: String, durationScale: Double) async {
+        tutorDraft = ""
+        demoTutorIsTyping = true
+        let characters = Array(text)
+        let baseInterval = characters.count > 80 ? 0.012 : 0.022
+        let interval = max(baseInterval * max(durationScale, 0.08), 0.002)
+
+        for character in characters {
+            guard isAutoDemoRunning else {
+                demoTutorIsTyping = false
+                return
+            }
+            tutorDraft.append(character)
+            let nanoseconds = UInt64(interval * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: nanoseconds)
+        }
+        demoTutorIsTyping = false
     }
 
     private func makeUnderstandingFeedbackMessage(from session: LearnGuardSession) -> TutorMessage {

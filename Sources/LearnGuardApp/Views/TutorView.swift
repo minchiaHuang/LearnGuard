@@ -128,6 +128,12 @@ struct TutorView: View {
                 }
                 .buttonStyle(.borderless)
 
+                if state.demoTutorIsTyping {
+                    Label("Learner typing...", systemImage: "keyboard")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LGStyle.accent)
+                }
+
                 Spacer()
             }
             .font(.caption)
