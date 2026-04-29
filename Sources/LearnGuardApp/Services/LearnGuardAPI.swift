@@ -19,8 +19,13 @@ struct LearnGuardAPI {
         try await send(path: "/health", method: "GET")
     }
 
-    func createSession() async throws -> LearnGuardSession {
-        try await send(path: "/api/session", method: "POST")
+    func createSession(problemId: String = "two_sum") async throws -> LearnGuardSession {
+        let request = SessionRequest(problemId: problemId)
+        return try await send(path: "/api/session", method: "POST", body: request)
+    }
+
+    func problems() async throws -> ProblemCatalogResponse {
+        try await send(path: "/api/problems", method: "GET")
     }
 
     func listSessions() async throws -> SessionHistoryResponse {
@@ -57,8 +62,12 @@ struct LearnGuardAPI {
         return try await send(path: "/api/answer", method: "POST", body: request)
     }
 
-    func evals() async throws -> JSONValue {
+    func evals() async throws -> EvalScoreboardResult {
         try await send(path: "/api/evals", method: "GET")
+    }
+
+    func skills() async throws -> SkillsMemoryResult {
+        try await send(path: "/api/skills", method: "GET")
     }
 
     func redTeam() async throws -> RedTeamResult {

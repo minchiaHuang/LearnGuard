@@ -42,11 +42,74 @@ CONTAINS_DUPLICATE_SOLUTION = '''def contains_duplicate(nums):
         seen.add(value)
     return False
 '''
+VALID_ANAGRAM_SOLUTION = '''def is_anagram(s, t):
+    """Return True when both strings contain the same characters with the same counts."""
+    if len(s) != len(t):
+        return False
+
+    counts = {}
+    for char in s:
+        counts[char] = counts.get(char, 0) + 1
+
+    for char in t:
+        if char not in counts:
+            return False
+        counts[char] -= 1
+        if counts[char] < 0:
+            return False
+
+    return True
+'''
+BEST_TIME_TO_BUY_STOCK_SOLUTION = '''def max_profit(prices):
+    """Return the best profit from one buy followed by one sell."""
+    min_price = float("inf")
+    best_profit = 0
+
+    for price in prices:
+        min_price = min(min_price, price)
+        best_profit = max(best_profit, price - min_price)
+
+    return best_profit
+'''
+MERGE_STRINGS_ALTERNATELY_SOLUTION = '''def merge_alternately(word1, word2):
+    """Return a new string that alternates characters from word1 and word2."""
+    merged = []
+    max_length = max(len(word1), len(word2))
+
+    for index in range(max_length):
+        if index < len(word1):
+            merged.append(word1[index])
+        if index < len(word2):
+            merged.append(word2[index])
+
+    return "".join(merged)
+'''
+MOVE_ZEROES_SOLUTION = '''def move_zeroes(nums):
+    """Move zeroes to the end in-place while preserving non-zero order."""
+    write = 0
+    for value in nums:
+        if value != 0:
+            nums[write] = value
+            write += 1
+
+    while write < len(nums):
+        nums[write] = 0
+        write += 1
+
+    return nums
+'''
 FULL_SOLUTION_CODE_MARKERS = (
     "for index, num in enumerate(nums):",
     "return [seen[complement], index]",
     "seen[num] = index",
 )
+
+LEETCODE_75_SOLUTIONS = {
+    "best_time_to_buy_stock": BEST_TIME_TO_BUY_STOCK_SOLUTION,
+    "merge_strings_alternately": MERGE_STRINGS_ALTERNATELY_SOLUTION,
+    "move_zeroes": MOVE_ZEROES_SOLUTION,
+    "valid_anagram": VALID_ANAGRAM_SOLUTION,
+}
 
 
 @pytest.fixture(autouse=True)
@@ -340,9 +403,53 @@ def test_without_openai_api_key_uses_local_mode_and_existing_flow_passes(monkeyp
     evals_response = local_client.get("/api/evals")
     assert evals_response.status_code == 200
     evals = evals_response.json()
-    assert evals["total"] == len(app_module.local_agents.TWO_SUM_EVAL_CASES)
+    assert evals["total"] == len(app_module.local_agents.ALL_EVAL_CASES)
     assert evals["passed"] == evals["total"]
     assert evals["all_passed"] is True
+    assert {section["id"] for section in evals["sections"]} == {
+        "comprehension",
+        "gate_policy",
+        "leakage_eval",
+        "red_team",
+    }
+    assert evals["judge_mode"]["primary_source"] == "local"
+    assert evals["judge_mode"]["fallback_used"] is False
+
+
+def test_evals_scoreboard_preserves_legacy_fields_and_adds_eval_sections(client):
+    response = client.get("/api/evals")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == len(app_module.local_agents.ALL_EVAL_CASES)
+    assert data["passed"] == data["total"]
+    assert data["all_passed"] is True
+
+    sections = {section["id"]: section for section in data["sections"]}
+    assert set(sections) == {"comprehension", "gate_policy", "leakage_eval", "red_team"}
+    assert sections["comprehension"]["headline_metric"] == f"{data['passed']}/{data['total']} passing"
+    assert sections["gate_policy"]["all_passed"] is True
+    assert sections["gate_policy"]["policy_levels"]["4"]["allowed_actions"]
+    assert sections["leakage_eval"]["all_passed"] is True
+    assert sections["leakage_eval"]["total"] >= 4
+    assert sections["red_team"]["block_rate"] == "8/8"
+    assert sections["red_team"]["precision"] == "100%"
+    assert data["judge_mode"] == {
+        "primary_source": "local",
+        "model": None,
+        "fallback_used": False,
+        "fallback_error": None,
+    }
+
+
+def test_leakage_eval_cases_do_not_expose_solution_markers(client):
+    response = client.get("/api/evals")
+
+    assert response.status_code == 200
+    sections = {section["id"]: section for section in response.json()["sections"]}
+    leakage_section = sections["leakage_eval"]
+    assert leakage_section["all_passed"] is True
+    assert_no_full_solution_markers(leakage_section)
 
 
 def test_local_agent_mode_env_overrides_present_openai_key(monkeypatch):
@@ -451,6 +558,37 @@ def test_sdk_agent_mode_can_be_mocked_and_returns_normalized_contract(monkeypatc
     assert data["solver_plan"]["agent_runtime"] == "sdk_stub"
 
 
+def test_sdk_primary_judge_invalid_output_falls_back_and_reports_metadata(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key-not-used")
+    monkeypatch.setenv("LEARNGUARD_AGENT_MODE", "sdk")
+    sdk_client, sdk_app = fresh_client()
+
+    fake_runtime = SimpleNamespace(
+        get_agent_mode=lambda: "sdk",
+        judge_answer=lambda *args: {"bad": "shape"},
+    )
+    monkeypatch.setattr(sdk_app, "_AGENT_RUNTIME_MODULE", fake_runtime)
+    monkeypatch.setattr(sdk_app, "_AGENT_RUNTIME_ERROR", None)
+
+    session = start_session(sdk_client)
+    response = sdk_client.post(
+        "/api/answer",
+        json={"session_id": session["session_id"], "answer": FULL_ANSWER},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    judge = judge_result_from(data)
+    assert judge["total"] == 4
+    assert judge["source"] == "local_fallback"
+    assert judge["fallback_error"]
+
+    evals = sdk_client.get("/api/evals").json()
+    assert evals["judge_mode"]["primary_source"] == "local_fallback"
+    assert evals["judge_mode"]["fallback_used"] is True
+    assert evals["judge_mode"]["fallback_error"]
+
+
 def test_start_session_returns_checkpoint_and_trace(client):
     data = start_session(client)
 
@@ -463,6 +601,45 @@ def test_start_session_returns_checkpoint_and_trace(client):
     assert trace
     assert any(event["agent"] == "Solver" for event in trace)
     assert any(event["agent"] == "Socratic" for event in trace)
+
+
+def test_start_session_includes_builtin_problem_catalog(client):
+    data = start_session(client)
+
+    catalog = data["problem_catalog"]
+    problem_ids = {problem["problem_id"] for problem in catalog}
+    assert {
+        "two_sum",
+        "contains_duplicate",
+        "best_time_to_buy_stock",
+        "merge_strings_alternately",
+        "move_zeroes",
+        "valid_anagram",
+    }.issubset(problem_ids)
+    assert all(problem["target_file"] == "solution.py" for problem in catalog)
+    assert all(problem["concepts"] for problem in catalog)
+
+
+def test_problem_catalog_endpoint_lists_builtin_repo_tasks(client):
+    response = client.get("/api/problems")
+
+    assert response.status_code == 200
+    problems = response.json()["problems"]
+    problem_ids = {problem["problem_id"] for problem in problems}
+    assert {
+        "two_sum",
+        "contains_duplicate",
+        "best_time_to_buy_stock",
+        "merge_strings_alternately",
+        "move_zeroes",
+        "valid_anagram",
+    }.issubset(problem_ids)
+    assert next(problem for problem in problems if problem["problem_id"] == "contains_duplicate")["test_file"] == (
+        "tests/test_contains_duplicate.py"
+    )
+    assert next(problem for problem in problems if problem["problem_id"] == "valid_anagram")["pattern"] == (
+        "frequency map / character counts"
+    )
 
 
 def test_new_session_does_not_delete_previous_session(client):
@@ -508,6 +685,41 @@ def test_list_sessions_returns_local_sqlite_summaries_for_replay(client, tmp_pat
     assert replay_summary["latest_max"] == 4
     assert replay_summary["learning_debt"]
     assert replay_summary["updated_at"]
+
+
+def test_answer_generates_skills_memory_artifact_and_api_payload(client, tmp_path, monkeypatch):
+    from learnguard import skills_memory as skills_memory_module
+
+    monkeypatch.setattr(app_module, "_store", app_module.SessionStore(tmp_path / "sessions.db"))
+    app_module._sessions.clear()
+
+    skills_path = tmp_path / "skills.md"
+
+    def refresh_to_tmp(store):
+        return skills_memory_module.refresh_skills_memory(store, skills_path)
+
+    monkeypatch.setattr(app_module, "refresh_skills_memory", refresh_to_tmp)
+
+    session = start_session(client)
+    response = client.post(
+        "/api/answer",
+        json={"session_id": session["session_id"], "answer": FULL_ANSWER},
+    )
+    assert response.status_code == 200
+    assert skills_path.exists()
+
+    api_response = client.get("/api/skills")
+    markdown_response = client.get("/api/skills.md")
+
+    assert api_response.status_code == 200
+    payload = api_response.json()
+    assert payload["path"] == str(skills_path)
+    assert payload["summary"]["latest_session"]["session_id"] == session["session_id"]
+    assert payload["summary"]["verified_skills"]
+    assert payload["summary"]["recommended_next_task"]["task_id"] == "valid_anagram"
+    assert "# LearnGuard Skills Memory" in payload["markdown"]
+    assert markdown_response.status_code == 200
+    assert markdown_response.text == payload["markdown"]
 
 
 def test_get_session_replay_detail_uses_existing_snapshot_without_creating_session(client, tmp_path, monkeypatch):
@@ -565,6 +777,23 @@ def test_second_builtin_problem_uses_problem_spec_contract(client):
     assert_run_passed(run_response.json())
 
 
+@pytest.mark.parametrize("problem_id", sorted(LEETCODE_75_SOLUTIONS))
+def test_leetcode_75_builtin_problem_uses_problem_spec_contract(client, problem_id):
+    session = start_problem_session(client, problem_id)
+
+    assert session["problem_id"] == problem_id
+    assert session["repo_context"]["test_file"].startswith("tests/test_")
+    assert session["checkpoint"]["problem_id"] == problem_id
+    assert session["visual_trace"]["problem_id"] == problem_id
+
+    save_response = save_student_code(client, session["session_id"], LEETCODE_75_SOLUTIONS[problem_id])
+    assert save_response.status_code == 200
+
+    run_response = run_student_code(client, session["session_id"])
+    assert run_response.status_code == 200
+    assert_run_passed(run_response.json())
+
+
 def test_second_builtin_problem_answer_updates_report(client):
     session = start_problem_session(client, "contains_duplicate")
 
@@ -605,6 +834,30 @@ def test_partial_answer_returns_level_2_and_blocks_apply_patch(client):
     data = response.json()
 
     assert_partial_level_2_blocks_apply_patch(data)
+
+
+def test_learning_report_includes_gate_decisions_and_timeline(client):
+    session = start_session(client)
+
+    response = client.post(
+        "/api/answer",
+        json={"session_id": session["session_id"], "answer": PARTIAL_ANSWER},
+    )
+
+    assert response.status_code == 200
+    report = response.json()["report"]
+    assert report["gate_decisions"]
+    assert any(decision["action"]["type"] == "apply_patch" for decision in report["gate_decisions"])
+
+    timeline = report["gate_timeline"]
+    assert any(event["phase"] == "checkpoint" for event in timeline)
+    assert any(event["phase"] == "understanding_eval" and event["score"] == "2/4" for event in timeline)
+    assert any(
+        event["phase"] == "action_gate"
+        and event["status"] == "blocked"
+        and event["action"] == "apply_patch"
+        for event in timeline
+    )
 
 
 def test_full_answer_returns_level_4_report_with_passing_pytest(client):
@@ -672,6 +925,33 @@ def test_student_code_save_then_run_passing_tests(client):
     run_response = run_student_code(client, session_id)
     assert run_response.status_code == 200
     assert_run_passed(run_response.json())
+
+
+def test_run_updates_learning_report_with_test_result(client):
+    session = start_session(client)
+    session_id = session["session_id"]
+
+    answer_response = client.post(
+        "/api/answer",
+        json={"session_id": session_id, "answer": FULL_ANSWER},
+    )
+    save_response = save_student_code(client, session_id, CORRECT_STUDENT_SOLUTION)
+    run_response = run_student_code(client, session_id)
+    replay_response = client.get(f"/api/session/{session_id}")
+
+    assert answer_response.status_code == 200
+    assert save_response.status_code == 200
+    assert run_response.status_code == 200
+    assert replay_response.status_code == 200
+
+    report = replay_response.json()["report"]
+    assert report["test_result"]["passed"] is True
+    assert any(
+        event["phase"] == "workspace"
+        and event["status"] == "student_tests_complete"
+        and event["passed"] is True
+        for event in report["gate_timeline"]
+    )
 
 
 def test_student_code_invalid_path_is_rejected(client):

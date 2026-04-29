@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 @MainActor
 final class AppState: ObservableObject {
@@ -7,7 +8,7 @@ final class AppState: ObservableObject {
     @Published var session: LearnGuardSession?
     @Published var studentCode = ""
     @Published var selectedPane: CodePane = .solution
-    @Published var selectedRightPane: RightPane = .tutor
+    @Published var selectedRightPane: RightPane = .visual
     @Published var visualStepIndex = 0
     @Published var isBusy = false
     @Published var backendErrorMessage: String?
@@ -16,9 +17,19 @@ final class AppState: ObservableObject {
     @Published var tutorDraft = ""
     @Published var tutorMessages: [TutorMessage] = []
     @Published var redTeamResult: RedTeamResult?
+    @Published var evalScoreboard: EvalScoreboardResult?
+    @Published var skillsMemory: SkillsMemoryResult?
     @Published var sessionHistory: [SessionSummary] = []
+    @Published var demoScriptStepIndex = 0
+    @Published var isAutoDemoRunning = false
+    @Published var demoOverlayVisible = false
+    @Published var demoCaptionTitle = "Ready"
+    @Published var demoCaption = "Open Script and run the two-minute demo."
+    @Published var demoProgress = 0.0
+    @Published var demoElapsedText = "0:00"
 
     private let api = LearnGuardAPI()
+    private let fullDemoAnswer = "Brute force checks every pair, so it is O(n^2). A hash map remembers seen values and checks the complement target minus current value in O(1), reducing the solution to O(n)."
 
     var sessionId: String? {
         session?.sessionId
@@ -147,9 +158,11 @@ final class AppState: ObservableObject {
             session = createdSession
             studentCode = createdSession.repoContext?.currentSolution ?? ""
             selectedPane = .solution
-            selectedRightPane = .tutor
+            selectedRightPane = .visual
             visualStepIndex = 0
             runResult = nil
+            evalScoreboard = nil
+            skillsMemory = nil
             tutorDraft = ""
             tutorMessages = makeInitialTutorMessages(from: createdSession)
             backendOnline = true
@@ -173,7 +186,7 @@ final class AppState: ObservableObject {
             session = replayedSession
             syncStudentCode(from: replayedSession)
             selectedPane = .solution
-            selectedRightPane = .tutor
+            selectedRightPane = .visual
             visualStepIndex = 0
             runResult = nil
             tutorDraft = ""
@@ -257,6 +270,8 @@ final class AppState: ObservableObject {
             session = updatedSession
             syncStudentCode(from: updatedSession)
             tutorMessages.append(makeUnderstandingFeedbackMessage(from: updatedSession))
+            evalScoreboard = try await api.evals()
+            skillsMemory = try await api.skills()
         }
     }
 
@@ -264,6 +279,112 @@ final class AppState: ObservableObject {
         await runBusyTask {
             redTeamResult = try await api.redTeam()
         }
+    }
+
+    func fetchScoreboard() async {
+        await runBusyTask {
+            evalScoreboard = try await api.evals()
+            skillsMemory = try await api.skills()
+        }
+    }
+
+    func runAutoDemo() async {
+        await runAutoDemo(durationScale: 1.0)
+    }
+
+    func runQuickDemoPreview() async {
+        await runAutoDemo(durationScale: 0.08)
+    }
+
+    private func runAutoDemo(durationScale: Double) async {
+        guard !isAutoDemoRunning else { return }
+        isAutoDemoRunning = true
+        defer {
+            isAutoDemoRunning = false
+        }
+        userMessage = nil
+        selectedRightPane = .script
+
+        await setDemoStage(
+            index: 0,
+            title: "Opening",
+            caption: "Codex can solve the task. LearnGuard asks whether the student actually learned it.",
+            progress: 0.0,
+            elapsed: "0:00",
+            duration: 15 * durationScale
+        )
+        await pauseDemo(seconds: 15 * durationScale)
+
+        await setDemoStage(
+            index: 1,
+            title: "Start Session",
+            caption: "Codex normally wants to jump straight to the solution. LearnGuard starts at Level 0.",
+            progress: 0.13,
+            elapsed: "0:15",
+            duration: 20 * durationScale
+        )
+        await startSessionForAutoDemo()
+        await pauseDemo(seconds: 20 * durationScale)
+
+        await setDemoStage(
+            index: 2,
+            title: "Gate Blocks Codex",
+            caption: "Before understanding is proven, direct solution help and workspace mutation stay blocked.",
+            progress: 0.29,
+            elapsed: "0:35",
+            duration: 20 * durationScale
+        )
+        selectedRightPane = .tutor
+        selectedPane = .solution
+        await pauseDemo(seconds: 20 * durationScale)
+
+        await setDemoStage(
+            index: 3,
+            title: "Checkpoint Unlock",
+            caption: "The learner explains brute force, O(n^2), and hash map complement lookup.",
+            progress: 0.46,
+            elapsed: "0:55",
+            duration: 20 * durationScale
+        )
+        tutorDraft = fullDemoAnswer
+        await checkUnderstanding()
+        await pauseDemo(seconds: 20 * durationScale)
+
+        await setDemoStage(
+            index: 4,
+            title: "Eval Scoreboard",
+            caption: "The product measures comprehension, workspace policy, and red-team resistance.",
+            progress: 0.63,
+            elapsed: "1:15",
+            duration: 25 * durationScale
+        )
+        selectedRightPane = .scoreboard
+        await fetchScoreboard()
+        await pauseDemo(seconds: 25 * durationScale)
+
+        await setDemoStage(
+            index: 5,
+            title: "skills.md Memory",
+            caption: "Learning Debt becomes reusable memory: verified skills, weak skills, and the next task.",
+            progress: 0.83,
+            elapsed: "1:40",
+            duration: 20 * durationScale
+        )
+        selectedRightPane = .scoreboard
+        await pauseDemo(seconds: 15 * durationScale)
+
+        await finishDemoStage(duration: 5 * durationScale)
+    }
+
+    func resetAutoDemoScript() {
+        demoScriptStepIndex = 0
+        isAutoDemoRunning = false
+        demoOverlayVisible = false
+        demoCaptionTitle = "Ready"
+        demoCaption = "Open Script and run the two-minute demo."
+        demoProgress = 0.0
+        demoElapsedText = "0:00"
+        selectedRightPane = .script
     }
 
     func nextVisualStep() {
@@ -285,6 +406,60 @@ final class AppState: ObservableObject {
                 containsSolution: false
             )
         ]
+    }
+
+    private func startSessionForAutoDemo() async {
+        await runBusyTask {
+            let createdSession = try await api.createSession()
+            session = createdSession
+            studentCode = createdSession.repoContext?.currentSolution ?? ""
+            selectedPane = .solution
+            selectedRightPane = .script
+            visualStepIndex = 0
+            runResult = nil
+            evalScoreboard = nil
+            skillsMemory = nil
+            tutorDraft = ""
+            tutorMessages = makeInitialTutorMessages(from: createdSession)
+            backendOnline = true
+            backendStatus = "Backend online"
+            await loadSessionHistory()
+        }
+    }
+
+    private func pauseDemo(seconds: Double = 1.0) async {
+        let nanoseconds = UInt64(seconds * 1_000_000_000)
+        try? await Task.sleep(nanoseconds: nanoseconds)
+    }
+
+    private func setDemoStage(
+        index: Int,
+        title: String,
+        caption: String,
+        progress: Double,
+        elapsed: String,
+        duration: Double
+    ) async {
+        withAnimation(.easeInOut(duration: 0.35)) {
+            demoOverlayVisible = true
+            demoScriptStepIndex = index
+            demoCaptionTitle = title
+            demoCaption = caption
+            demoElapsedText = elapsed
+        }
+        withAnimation(.linear(duration: max(duration, 0.1))) {
+            demoProgress = progress
+        }
+    }
+
+    private func finishDemoStage(duration: Double) async {
+        withAnimation(.linear(duration: max(duration, 0.1))) {
+            demoProgress = 1.0
+            demoElapsedText = "2:00"
+            demoCaptionTitle = "Closing Line"
+            demoCaption = "Codex can solve the task. LearnGuard proves whether the learner earned the right to let Codex act."
+        }
+        await pauseDemo(seconds: max(duration, 0.1))
     }
 
     private func makeUnderstandingFeedbackMessage(from session: LearnGuardSession) -> TutorMessage {
