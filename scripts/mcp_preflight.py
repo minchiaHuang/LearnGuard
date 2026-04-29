@@ -16,6 +16,11 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MCP_SERVER = PROJECT_ROOT / "mcp_server.py"
 PROBLEM_ID = "two_sum"
+REQUIRED_DEMO_TOOLS = (
+    "learnguard_codex_preflight",
+    "learnguard_gate_action",
+    "learnguard_execute_action",
+)
 
 FULL_ANSWER = (
     "Brute force checks every pair, which is O(n^2). A faster solution keeps a hash map "
@@ -155,29 +160,26 @@ def run_preflight(*, timeout: float) -> list[str]:
 
         tools = client.request("tools/list").get("tools")
         tool_names = {tool.get("name") for tool in tools if isinstance(tool, dict)} if isinstance(tools, list) else set()
-        expected_tools = {
+        expected_tools = set(REQUIRED_DEMO_TOOLS) | {
             "learnguard_start_session",
             "learnguard_judge_answer",
-            "learnguard_gate_action",
-            "learnguard_execute_action",
-            "learnguard_codex_preflight",
         }
         require(expected_tools.issubset(tool_names), f"missing tools: {sorted(expected_tools - tool_names)}")
-        transcript.append(f"tools/list: ok ({len(tool_names)} tools)")
+        transcript.append(format_visible_tools(tool_names))
 
         server_preflight = tool_call(client, "learnguard_codex_preflight", {"problem_id": PROBLEM_ID})
         require(server_preflight.get("all_passed") is True, "server-side codex preflight did not pass")
         require(server_preflight.get("mutates_files") is False, "server-side codex preflight may mutate files")
-        transcript.append("tools/call learnguard_codex_preflight: all checks passed, no mutation")
+        transcript.append("preflight rehearsal: passed without source patch mutation")
 
         session = tool_call(
             client,
             "learnguard_start_session",
-            {"problem_id": PROBLEM_ID, "reset_demo_repo": False},
+            {"problem_id": PROBLEM_ID, "reset_demo_repo": True},
         )
         repo_context = session.get("repo_context", {})
         require(repo_context.get("problem_id") == PROBLEM_ID, "start_session did not return two_sum context")
-        transcript.append("tools/call learnguard_start_session: ok (two_sum, reset=false)")
+        transcript.append("demo session reset: stable two_sum baseline ready")
 
         level_0_patch = tool_call(
             client,
@@ -185,7 +187,7 @@ def run_preflight(*, timeout: float) -> list[str]:
             {"problem_id": PROBLEM_ID, "autonomy_level": 0, "action": {"type": "apply_patch", "path": "solution.py"}},
         )
         require_blocked(level_0_patch, "Level 0 apply_patch")
-        transcript.append("tools/call gate Level 0 apply_patch: blocked")
+        transcript.append("Level 0 gate: apply_patch blocked")
 
         level_0_read = tool_call(
             client,
@@ -193,7 +195,7 @@ def run_preflight(*, timeout: float) -> list[str]:
             {"problem_id": PROBLEM_ID, "autonomy_level": 0, "action": {"type": "read_file", "path": "solution.py"}},
         )
         require_blocked(level_0_read, "Level 0 read_file")
-        transcript.append("tools/call gate Level 0 read_file: blocked")
+        transcript.append("Level 0 gate: read_file blocked")
 
         bad_answer = tool_call(
             client,
@@ -222,10 +224,17 @@ def run_preflight(*, timeout: float) -> list[str]:
             },
         )
         require_allowed_not_executed(allowed_patch, "Level 4 apply_patch execute=false")
-        transcript.append("tools/call execute Level 4 apply_patch execute=false: allowed, not executed")
+        transcript.append("Level 4 execute dry-run: apply_patch allowed, not executed")
     finally:
         client.close()
     return transcript
+
+
+def format_visible_tools(tool_names: set[str]) -> str:
+    missing_tools = [name for name in REQUIRED_DEMO_TOOLS if name not in tool_names]
+    require(not missing_tools, f"missing demo-visible tools: {missing_tools}")
+    visible_tools = ", ".join(REQUIRED_DEMO_TOOLS)
+    return f"visible demo tools: {visible_tools} ({len(tool_names)} total)"
 
 
 def require(condition: bool, message: str) -> None:

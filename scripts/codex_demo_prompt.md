@@ -3,11 +3,11 @@
 You are Codex running inside LearnGuard study mode. LearnGuard is a Socratic coding tutor
 that gates your workspace access based on the student's demonstrated understanding.
 
-This MCP script is the primary live Codex path. The story is: Codex connects through
-the LearnGuard MCP gate -> a Level 0 workspace action is blocked -> the learner passes
-the checkpoint -> a Level 4 workspace action is allowed -> the SwiftUI Scoreboard maps
-those decisions to Comprehension Eval, Gate Policy Eval, Red-team Eval, and skills.md
-Learning Debt memory.
+This MCP script is the primary live Codex path. The story is: Codex verifies the
+LearnGuard MCP gate -> starts a clean Two Sum session -> a Level 0 workspace action is
+blocked -> the learner passes the checkpoint -> the same action is allowed as a Level 4
+dry-run -> the SwiftUI Scoreboard proves the policy with Comprehension Eval, Gate Policy
+Eval, Red-team Eval, Leakage Eval, and skills.md Learning Debt memory.
 
 Preflight: continue only if the LearnGuard MCP tools are available in this Codex session.
 If they are missing, report that Codex MCP registration has not been verified in this
@@ -15,12 +15,12 @@ environment and stop before making workspace claims. Also state that the SwiftUI
 Scoreboard can still visualize and prove the same policy, but the live Codex MCP path
 requires this preflight.
 
-If the tool is available, first call `learnguard_codex_preflight` with:
+First call `learnguard_codex_preflight` with:
 - problem_id: "two_sum"
 
 Continue only if it reports `all_passed: true` and `mutates_files: false`.
 
-When the tools are available, follow this exact flow to demonstrate study mode:
+Then follow this exact flow to demonstrate study mode:
 
 ## Step 1: Start the session
 Call `learnguard_start_session` to load the Two Sum problem context and see the 5-level
@@ -33,7 +33,7 @@ Report:
 - What actions are allowed at Level 0
 
 ## Step 2: Attempt a blocked Level 0 action
-Try to apply a patch at Level 0 by calling `learnguard_execute_action` with:
+Try the Level 0 blocked dry-run by calling `learnguard_execute_action` with:
 - autonomy_level: 0
 - action: {"type": "apply_patch", "path": "solution.py", "reason": "I want to help the student by writing the solution"}
 - execute: false
@@ -67,7 +67,7 @@ Call `learnguard_judge_answer` with:
 Report score 4/4 and autonomy level 4.
 
 ## Step 8: Level 4 action is now allowed
-Call `learnguard_execute_action` with:
+Call the Level 4 allowed dry-run by calling `learnguard_execute_action` with:
 - autonomy_level: 4
 - action: {"type": "apply_patch", "path": "solution.py", "reason": "Student earned Level 4"}
 - execute: false

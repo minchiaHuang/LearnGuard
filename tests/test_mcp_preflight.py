@@ -9,6 +9,37 @@ if str(PROJECT_ROOT) not in sys.path:
 from scripts import mcp_preflight
 
 
+def test_format_visible_tools_lists_required_demo_tools():
+    line = mcp_preflight.format_visible_tools(
+        {
+            "learnguard_codex_preflight",
+            "learnguard_gate_action",
+            "learnguard_execute_action",
+            "learnguard_start_session",
+        }
+    )
+
+    assert line == (
+        "visible demo tools: learnguard_codex_preflight, "
+        "learnguard_gate_action, learnguard_execute_action (4 total)"
+    )
+
+
+def test_format_visible_tools_rejects_missing_demo_tool():
+    try:
+        mcp_preflight.format_visible_tools(
+            {
+                "learnguard_codex_preflight",
+                "learnguard_gate_action",
+            }
+        )
+    except mcp_preflight.PreflightError as exc:
+        assert "missing demo-visible tools" in str(exc)
+        assert "learnguard_execute_action" in str(exc)
+    else:
+        raise AssertionError("missing demo tool should fail visibility assertion")
+
+
 def test_require_blocked_accepts_blocked_decision():
     mcp_preflight.require_blocked(
         {"decision": {"allowed": False, "violations": ["action blocked at level 0: read_file"]}},

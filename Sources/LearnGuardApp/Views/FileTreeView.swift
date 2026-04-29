@@ -35,6 +35,8 @@ struct FileTreeView: View {
         VStack(spacing: 0) {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
+                    problemsSection
+                    sidebarDivider
                     explorerSection
                     sidebarDivider
                     levelSection
@@ -52,6 +54,34 @@ struct FileTreeView: View {
                 .fill(LGStyle.border)
                 .frame(width: 1)
         }
+    }
+
+    private var problemsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sidebarTitle("Problems")
+
+            if state.problemCatalog.isEmpty {
+                Text(state.backendOnline ? "Loading problem catalog..." : "Start backend to load problems.")
+                    .font(.caption)
+                    .foregroundStyle(LGStyle.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 6)
+            } else {
+                VStack(spacing: 2) {
+                    ForEach(state.problemCatalog) { problem in
+                        Button {
+                            Task { await state.startProblemSession(problem) }
+                        } label: {
+                            problemRow(problem)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.isBusy)
+                    }
+                }
+                .padding(.horizontal, 6)
+            }
+        }
+        .padding(.vertical, 14)
     }
 
     private var explorerSection: some View {
@@ -89,6 +119,34 @@ struct FileTreeView: View {
             }
         }
         .padding(.vertical, 14)
+    }
+
+    private func problemRow(_ problem: ProblemCatalogItem) -> some View {
+        let isActive = state.selectedProblemId == problem.problemId
+        return HStack(spacing: 9) {
+            Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(isActive ? LGStyle.green : LGStyle.secondary.opacity(0.55))
+                .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(problem.title)
+                    .font(.system(size: 12, weight: isActive ? .bold : .semibold))
+                    .foregroundStyle(isActive ? LGStyle.text : LGStyle.secondary)
+                    .lineLimit(1)
+
+                Text(problem.pattern ?? problem.testFile ?? problem.problemId)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(LGStyle.secondary.opacity(0.82))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 9)
+        .frame(height: 42)
+        .background(isActive ? LGStyle.accent.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isActive ? LGStyle.accent.opacity(0.18) : Color.clear))
     }
 
     private var levelSection: some View {

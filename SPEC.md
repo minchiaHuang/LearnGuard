@@ -2,38 +2,67 @@
 
 ## Product Definition
 
-LearnGuard is a study-mode coding IDE where students write code themselves, while Codex acts as a Socratic tutor instead of an answer generator.
+LearnGuard is a Codex-native study-mode runtime where learner understanding controls Codex workspace actions.
 
 Pitch:
 
-> Codex can write any LeetCode solution in 5 seconds. LearnGuard puts Codex in study mode - it teaches you how to write it yourself.
+> Codex can write any LeetCode solution in 5 seconds. LearnGuard makes student understanding the permission layer: no understanding, no Codex action.
 
-The product is not a gate dashboard and not a solution generator. The student is the primary actor. Codex is the teacher, not the coder.
+The product is not a generic tutor chatbot and not a solution generator. It wraps a controlled coding workspace with an MCP action gate: Codex can ask for stronger actions only after the learner has demonstrated the relevant concept. The SwiftUI app is the proof surface that shows the learner flow, gate trace, eval scoreboard, and Learning Debt memory.
 
 ## Target User Experience
 
 The target workflow is:
 
-1. The student opens a coding task in the IDE.
-2. The student edits `solution.py` in the center editor.
-3. The student gets stuck and asks the Tutor.
-4. The Tutor asks a Socratic question instead of giving solution code.
-5. The student answers, reasons, or improves their code.
-6. The Visual tab explains the key concept with a concrete algorithm trace.
-7. The student presses Run to execute tests against their own code.
-8. LearnGuard tracks understanding in the background and adjusts hint depth.
+1. Codex runs the LearnGuard MCP preflight and confirms the gate tools are visible without source mutation.
+2. The learner opens a built-in coding task in the SwiftUI IDE.
+3. The learner edits `solution.py` and can ask the Tutor when stuck.
+4. Codex or the app attempts a workspace action such as reading files, proposing a diff, applying a patch, or running tests.
+5. LearnGuard gates that action against the learner's current comprehension level.
+6. The Tutor asks a Socratic question instead of giving solution code.
+7. The learner answers, reasons, or improves their code.
+8. A stronger answer raises the level and can unlock the same action that was previously blocked.
+9. The learner presses Run to execute tests against their own code.
+10. The Scoreboard and `skills.md` memory show comprehension, policy, leakage, red-team, and Learning Debt evidence.
 
-The core difference from a normal coding assistant is that LearnGuard prevents answer-copying. It keeps the learner responsible for the implementation.
+The core difference from a normal coding assistant is that LearnGuard enforces answer-copying prevention at the action level. It keeps the learner responsible for the implementation while still making Codex useful as a gated teacher.
 
 ## Product Principles
 
 - Student writes the code.
+- Learner understanding controls Codex workspace permissions.
+- MCP preflight must prove the Codex action-gate path before live claims.
 - Tutor asks questions before giving hints.
 - Tutor never provides a full solution.
 - Visual explanations support understanding, not answer copying.
 - Comprehension score controls hint depth in the background.
 - Tests validate the student's code, not Codex's code.
-- Learning Debt is an internal measure of whether assistance exceeded demonstrated understanding.
+- Learning Debt records whether Codex assistance exceeded demonstrated understanding.
+- Scoreboard proof must cover comprehension, gate policy, leakage, and red-team behavior.
+
+## Codex Action Gate Policy
+
+The gate evaluates structured workspace actions before the repo is touched:
+
+```json
+{
+  "type": "apply_patch",
+  "path": "solution.py",
+  "reason": "Student earned Level 4"
+}
+```
+
+The decision is tied to the current autonomy level:
+
+| Level | Name | Allowed intent |
+|---:|---|---|
+| 0 | Question Only | Ask the checkpoint question. No repo inspection or implementation. |
+| 1 | Read-Only Orientation | Read the problem and failing test. Name the pattern only. |
+| 2 | Plan + Test Strategy | Generate pseudocode and test strategy. No patch, command, or diff exposure. |
+| 3 | Diff Proposal | Propose and explain a diff without applying it. |
+| 4 | Workspace Unlock | Apply patch, run pytest, and summarize `git diff`. |
+
+For the official demo, the same `apply_patch solution.py` dry-run should be blocked at Level 0 and allowed at Level 4. That visible before/after decision is the core Codex-native proof.
 
 ## Tutor Policy
 
@@ -78,8 +107,8 @@ The target macOS MVP uses a desktop IDE layout:
 - Right: Tutor, Visual, Scoreboard, and Script tabs
   - Tutor chat for Socratic guidance
   - Visual trace for algorithm reasoning
-  - Scoreboard for comprehension, policy, leakage, and red-team evals
-  - Script for the two-minute live demo flow
+  - Scoreboard for comprehension, MCP gate policy, leakage, and red-team evals
+  - Script for the two-minute MCP action-gate demo flow
 - Top actions
   - Demo
   - Run
@@ -97,6 +126,8 @@ FastAPI owns the learning session and demo workspace:
 - load the demo repo context
 - accept learner answers
 - score comprehension
+- enforce the Codex action gate before workspace mutation
+- expose MCP-compatible dry-run and execute decisions
 - return Socratic tutor prompts and hints
 - return visual traces
 - run tests against student code
@@ -127,14 +158,14 @@ Current implemented pieces:
 - problem catalog endpoint and Swift decoding model
 - Eval Scoreboard sections for Comprehension Eval, Gate Policy Eval, Leakage Eval, and Red-team Eval
 - `skills.md` memory generation and API surface
-- UI copy that demotes the old gate dashboard language
+- UI copy aligned to MCP action gating and the SwiftUI Scoreboard proof surface
 - Swift and Python tests for the current contracts
 
 Codex CLI integration is a demo configuration, not a global repository guarantee. Claims about Codex calling the MCP gate are valid only after the local LearnGuard MCP tools are visible in the active Codex session.
 
 ## Product Maturity
 
-LearnGuard currently targets a hackathon MVP. The MVP proves the core interaction: the student writes code, Codex teaches through Socratic guidance, tests validate the student's own implementation, and understanding is tracked in the background.
+LearnGuard currently targets a hackathon MVP. The MVP proves the core interaction: Codex asks for workspace actions, LearnGuard blocks or allows those actions based on demonstrated understanding, the student still owns the implementation, and the Scoreboard turns that policy into evidence.
 
 This is not yet a production learning platform. Production readiness requires platform capabilities beyond the hackathon scope, especially persistence, secure execution, user identity, multi-problem coverage, and a fully adaptive Codex tutor orchestration layer.
 
@@ -179,6 +210,18 @@ MCP contract:
 
 `POST /api/session` still works without a body for the Two Sum demo. Smoke tooling may also send an optional `problem_id` or explicit session payload so the built-in catalog can be rehearsed without changing the default smoke path.
 
+## Source And Repository Boundary
+
+The public product repository is the `LearnGuard/` directory. The parent hackathon folder contains source material and legacy work that should not be staged into this repo by accident:
+
+| Path | Boundary |
+|---|---|
+| `.` | Canonical LearnGuard repo for FastAPI, SwiftUI, MCP, tests, demo repo, README, SPEC, and architecture docs. |
+| `../style/` | Design prototype/reference files. Use as visual source material only. |
+| `../test/` | Separate historical git repo. Do not merge its dirty tree into this branch. |
+| `../OpenAI Codex Hackathon - Sydney · Luma.pdf` | Event rules and submission requirement source. |
+| `../openai_codex_hackathon_winning_projects.xlsx` | Research source for winning-pattern positioning. |
+
 ## Verification Boundary
 
 Automated checks cover deterministic backend behavior:
@@ -206,7 +249,7 @@ The target MVP is accepted when:
 - the background score changes after learner answers
 - the Scoreboard shows passing comprehension, gate policy, leakage, and red-team evals
 - the `skills.md` preview summarizes verified skills, weak skills, Learning Debt, and next task
-- README, SPEC, and ARCHITECTURE agree that LearnGuard is student-first
+- README, SPEC, and ARCHITECTURE agree that LearnGuard is a Codex MCP action gate with a student-first study-mode UI
 
 ## Non-Goals For This Hackathon MVP
 

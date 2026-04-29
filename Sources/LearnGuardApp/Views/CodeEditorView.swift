@@ -7,7 +7,7 @@ struct CodeEditorView: View {
         VStack(spacing: 0) {
             tabStrip
             editorSurface
-            TestOutputPanel(result: state.runResult)
+            CodexAgentTracePanel(state: state)
         }
         .background(LGStyle.editorBackground)
         .overlay(alignment: .trailing) {
