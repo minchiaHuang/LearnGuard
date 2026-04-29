@@ -85,6 +85,10 @@ RUBRIC_TO_CONCEPT = {
     "quantifies comparisons as n^2 or n*(n-1)/2": "comparison_count",
     "explains why brute force is slow": "brute_force_complexity",
     "connects improvement to hash map complement lookup": "complement_lookup",
+    "mentions comparing values for duplicates": "pair_enumeration",
+    "quantifies comparisons as n^2 or repeated scans": "comparison_count",
+    "connects improvement to a set of seen values": "hash_set",
+    "explains membership lookup avoids pair scanning": "membership_test",
 }
 
 TWO_SUM_CORE_CONCEPTS = {

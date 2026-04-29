@@ -33,6 +33,15 @@ CORRECT_STUDENT_SOLUTION = '''def two_sum(nums, target):
         seen[num] = index
     return []
 '''
+CONTAINS_DUPLICATE_SOLUTION = '''def contains_duplicate(nums):
+    """Return True when any value appears more than once."""
+    seen = set()
+    for value in nums:
+        if value in seen:
+            return True
+        seen.add(value)
+    return False
+'''
 FULL_SOLUTION_CODE_MARKERS = (
     "for index, num in enumerate(nums):",
     "return [seen[complement], index]",
@@ -67,6 +76,12 @@ def client(monkeypatch):
 
 def start_session(client):
     response = client.post("/api/session")
+    assert response.status_code == 200
+    return response.json()
+
+
+def start_problem_session(client, problem_id):
+    response = client.post("/api/session", json={"problem_id": problem_id})
     assert response.status_code == 200
     return response.json()
 
@@ -325,8 +340,8 @@ def test_without_openai_api_key_uses_local_mode_and_existing_flow_passes(monkeyp
     evals_response = local_client.get("/api/evals")
     assert evals_response.status_code == 200
     evals = evals_response.json()
-    assert evals["total"] == 5
-    assert evals["passed"] == 5
+    assert evals["total"] == len(app_module.local_agents.TWO_SUM_EVAL_CASES)
+    assert evals["passed"] == evals["total"]
     assert evals["all_passed"] is True
 
 
@@ -450,6 +465,82 @@ def test_start_session_returns_checkpoint_and_trace(client):
     assert any(event["agent"] == "Socratic" for event in trace)
 
 
+def test_new_session_does_not_delete_previous_session(client):
+    first = start_session(client)
+    second = start_session(client)
+
+    first_response = client.get(f"/api/session/{first['session_id']}")
+    second_response = client.get(f"/api/session/{second['session_id']}")
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert first_response.json()["session_id"] == first["session_id"]
+    assert second_response.json()["session_id"] == second["session_id"]
+
+
+def test_sessions_use_isolated_workspaces(client):
+    first = start_session(client)
+    second = start_session(client)
+
+    first_save = save_student_code(client, first["session_id"], BASELINE_STUDENT_SOLUTION)
+    second_save = save_student_code(client, second["session_id"], CORRECT_STUDENT_SOLUTION)
+    assert first_save.status_code == 200
+    assert second_save.status_code == 200
+
+    first_run = run_student_code(client, first["session_id"])
+    second_run = run_student_code(client, second["session_id"])
+
+    assert first_run.status_code == 200
+    assert second_run.status_code == 200
+    assert_run_failed(first_run.json())
+    assert_run_passed(second_run.json())
+    assert first["repo_context"]["repo_root"] != second["repo_context"]["repo_root"]
+
+
+def test_second_builtin_problem_uses_problem_spec_contract(client):
+    session = start_problem_session(client, "contains_duplicate")
+
+    assert session["problem_id"] == "contains_duplicate"
+    assert session["task_id"] == "contains_duplicate_fix"
+    assert session["repo_context"]["test_file"] == "tests/test_contains_duplicate.py"
+    assert "Contains Duplicate" in session["repo_context"]["problem_statement"]
+
+    save_response = save_student_code(client, session["session_id"], CONTAINS_DUPLICATE_SOLUTION)
+    assert save_response.status_code == 200
+
+    run_response = run_student_code(client, session["session_id"])
+    assert run_response.status_code == 200
+    assert_run_passed(run_response.json())
+
+
+def test_second_builtin_problem_answer_updates_report(client):
+    session = start_problem_session(client, "contains_duplicate")
+
+    response = client.post(
+        "/api/answer",
+        json={
+            "session_id": session["session_id"],
+            "answer": (
+                "Brute force compares values pair by pair, so the number of checks grows quadratically. "
+                "A set remembers seen values, and membership lookup avoids scanning prior values again."
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["problem_id"] == "contains_duplicate"
+    assert data["autonomy_level"] == 4
+    assert data["report"]["verified_concepts"]
+
+
+def test_unknown_problem_id_is_rejected(client):
+    response = client.post("/api/session", json={"problem_id": "not_real"})
+
+    assert response.status_code == 400
+    assert "unknown problem_id" in response_text(response.json())
+
+
 def test_partial_answer_returns_level_2_and_blocks_apply_patch(client):
     session = start_session(client)
 
@@ -481,7 +572,7 @@ def test_full_answer_returns_level_4_report_with_passing_pytest(client):
 def test_workspace_action_failure_returns_structured_artifact(client, monkeypatch):
     session = start_session(client)
 
-    def fail_workspace_action(action):
+    def fail_workspace_action(action, **kwargs):
         raise ValueError(f"bad workspace action: {action['type']}")
 
     monkeypatch.setattr(app_module, "execute_workspace_action", fail_workspace_action)

@@ -16,7 +16,7 @@ Original repository: https://github.com/minchiaHuang/LearnGuard
 
 For the OpenAI Codex Hackathon, the prior LearnGuard learning backend was extended with:
 
-- **Codex CLI ↔ MCP live integration** - Codex CLI is registered to the LearnGuard MCP server. Every `apply_patch`, `write_file`, and `run_command` call goes through the comprehension gate before execution. Run: `codex "$(cat scripts/codex_demo_prompt.md)"`
+- **Codex MCP gate rehearsal** - the local LearnGuard MCP server exposes guarded workspace tools for the Codex demo. Treat Codex CLI registration as environment-specific until verified on the demo machine. Run the prompt only after confirming the LearnGuard MCP tools are available: `codex "$(cat scripts/codex_demo_prompt.md)"`
 - **Adversarial Red Team Scoreboard** - 10 attack vectors (level boundary violations, premature file access, path traversal) run against the gate. Score: **8/8 attacks blocked, 2/2 legitimate actions passed. Precision: 100%.** Live in the app's Red Team tab.
 - **Native macOS SwiftUI study shell** - Explorer, code context, Tutor, Visual trace, and Red Team scoreboard
 - **Codex study-mode Tutor** - Socratic prompts that guide the learner instead of pasting a full answer
@@ -56,7 +56,7 @@ The student is the main actor:
 5. The student improves the code.
 6. Run validates the student's own solution.
 
-Codex CLI is wired to the LearnGuard MCP gate. Every Codex workspace action is evaluated against the student's current comprehension level before it executes. The Red Team tab proves the gate holds under adversarial conditions.
+The local LearnGuard MCP gate can evaluate guarded workspace actions against the student's current comprehension level. When Codex CLI is explicitly configured to use that MCP server, the demo prompt exercises the same gate from Codex. The Red Team tab proves the gate policy holds under the checked adversarial cases.
 
 ## Product Maturity
 
@@ -148,6 +148,13 @@ Automated HTTP smoke against a running FastAPI server:
 
 The smoke script writes failing and passing learner code through `/api/code` and `/api/run`, then restores `demo_repo/solution.py` to the exact content it had before smoke execution.
 
+If a later backend build requires an explicit session payload, pass it without changing the default smoke path:
+
+```bash
+.venv/bin/python scripts/smoke_demo.py --base-url http://127.0.0.1:8788 --problem-id two_sum
+.venv/bin/python scripts/smoke_demo.py --base-url http://127.0.0.1:8788 --session-payload '{"problem_id":"two_sum"}'
+```
+
 Automated Swift package checks:
 
 ```bash
@@ -160,11 +167,13 @@ Manual native SwiftUI smoke:
 - backend offline state renders without crashing
 - backend online health check passes
 - Start Session loads the Socratic checkpoint
+- editable `solution.py` can save through the backend
+- Run executes tests against the saved student code
 - Tutor does not provide full solution code
 - Visual trace explains the hash map concept
 - score and Learning Debt render as background feedback
 
-Manual native smoke is an app-behavior checklist. It is separate from the automated HTTP smoke script and should be recorded by the person running the macOS app.
+Manual native smoke is an app-behavior checklist. It should be rehearsed after the backend pytest and HTTP smoke checks, and recorded by the person running the macOS app.
 
 ## Hackathon Submission
 

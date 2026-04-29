@@ -35,6 +35,26 @@ def test_mcp_judge_answer_returns_autonomy_level():
     assert result["autonomy_level"] == 4
 
 
+def test_mcp_start_session_accepts_builtin_problem_id():
+    result = mcp_server.call_tool(
+        "learnguard_start_session",
+        {"problem_id": "contains_duplicate", "reset_demo_repo": True},
+    )
+
+    assert result["repo_context"]["problem_id"] == "contains_duplicate"
+    assert result["repo_context"]["test_file"] == "tests/test_contains_duplicate.py"
+    assert result["checkpoint"]["problem_id"] == "contains_duplicate"
+
+
+def test_mcp_start_session_rejects_unknown_problem_id():
+    try:
+        mcp_server.call_tool("learnguard_start_session", {"problem_id": "not_real"})
+    except ValueError as exc:
+        assert "unknown problem_id" in str(exc)
+    else:
+        raise AssertionError("unknown problem_id should be rejected")
+
+
 def test_mcp_gate_blocks_apply_patch_at_level_2():
     result = mcp_server.call_tool(
         "learnguard_gate_action",
@@ -46,6 +66,19 @@ def test_mcp_gate_blocks_apply_patch_at_level_2():
 
     assert result["decision"]["allowed"] is False
     assert any("apply_patch" in violation for violation in result["decision"]["violations"])
+
+
+def test_mcp_gate_uses_problem_specific_allowlist():
+    result = mcp_server.call_tool(
+        "learnguard_gate_action",
+        {
+            "autonomy_level": 1,
+            "problem_id": "contains_duplicate",
+            "action": {"type": "read_test", "path": "tests/test_contains_duplicate.py"},
+        },
+    )
+
+    assert result["decision"]["allowed"] is True
 
 
 def test_mcp_execute_action_does_not_run_blocked_action():

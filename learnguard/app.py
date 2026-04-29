@@ -18,6 +18,8 @@ from .concept_graph import update_concept_graph
 from .contracts import SavedCodeResult, StudentTestResult, TutorResponse
 from .gate import enforce_codex_action, policy_summary
 from .reports import generate_learning_report
+from .session_store import SessionStore
+from .problem_specs import get_problem_spec
 from .workspace import (
     execute_workspace_action,
     load_demo_repo_context,
@@ -43,6 +45,7 @@ RUNTIME_INTEGRATION_POINTS: dict[str, tuple[str, ...]] = {
 app = FastAPI(title="LearnGuard MVP", version="0.1.0")
 _sessions: dict[str, dict[str, Any]] = {}
 _active_session_id: str | None = None
+_store = SessionStore()
 
 
 def _load_agent_runtime() -> tuple[ModuleType | None, str | None]:
@@ -58,6 +61,10 @@ _AGENT_RUNTIME_MODULE, _AGENT_RUNTIME_ERROR = _load_agent_runtime()
 class AnswerRequest(BaseModel):
     session_id: str
     answer: str
+
+
+class SessionRequest(BaseModel):
+    problem_id: str = "two_sum"
 
 
 class CodeRequest(BaseModel):
@@ -82,18 +89,23 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/session")
-def create_session() -> dict[str, Any]:
-    """Create or reset the single in-memory LearnGuard session."""
+def create_session(request: SessionRequest | None = None) -> dict[str, Any]:
+    """Create an isolated LearnGuard session for a built-in problem."""
     global _active_session_id
 
-    repo_context = load_demo_repo_context(reset=True)
     session_id = str(uuid4())
+    problem_id = (request.problem_id if request else "two_sum") or "two_sum"
+    try:
+        repo_context = load_demo_repo_context(reset=True, session_id=session_id, problem_id=problem_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     plan = solver_plan(repo_context)
     checkpoint = checkpoint_question(plan)
-    normal_path = normal_codex_path_preview()
+    normal_path = normal_codex_path_preview(problem_id)
 
     session: dict[str, Any] = {
         "session_id": session_id,
+        "problem_id": repo_context["problem_id"],
         "task": repo_context["task"],
         "task_id": repo_context["task_id"],
         "agent_mode": _agent_mode(),
@@ -107,12 +119,16 @@ def create_session() -> dict[str, Any]:
         "video_demo_state": _video_demo_state_for_level(0, "waiting_for_answer"),
         "repo_context": {
             "repo_root": repo_context["repo_root"],
+            "problem_id": repo_context["problem_id"],
             "target_file": repo_context["target_file"],
             "test_file": repo_context["test_file"],
+            "allowed_read_paths": repo_context["allowed_read_paths"],
+            "test_command": repo_context["test_command"],
             "problem_statement": repo_context["problem_statement"],
             "failing_test": repo_context["failing_test"],
             "current_solution": repo_context["current_solution"],
             "initial_state": repo_context["initial_state"],
+            "problem_spec": repo_context["problem_spec"],
         },
         "solver_plan": plan,
         "checkpoint": checkpoint,
@@ -175,9 +191,9 @@ def create_session() -> dict[str, Any]:
         },
     )
 
-    _sessions.clear()
     _sessions[session_id] = session
     _active_session_id = session_id
+    _persist_session(session)
     return session
 
 
@@ -240,7 +256,7 @@ def submit_answer(request: AnswerRequest) -> dict[str, Any]:
     session["planned_actions"] = actions
 
     for action in actions:
-        decision = enforce_codex_action(level, action)
+        decision = enforce_codex_action(level, action, allowed_paths=session["repo_context"].get("allowed_read_paths"))
         session["gate_decisions"].append(decision)
         _add_trace(session, "Gate", "allowed" if decision["allowed"] else "blocked", decision)
 
@@ -255,7 +271,11 @@ def submit_answer(request: AnswerRequest) -> dict[str, Any]:
             continue
 
         try:
-            result = execute_workspace_action(action)
+            result = execute_workspace_action(
+                action,
+                repo_root=session["repo_context"]["repo_root"],
+                problem_id=session["problem_id"],
+            )
         except Exception as exc:
             result = {
                 "type": action["type"],
@@ -277,6 +297,7 @@ def submit_answer(request: AnswerRequest) -> dict[str, Any]:
     session["video_demo_state"] = _video_demo_state_for_level(level, session["status"], session["workspace_artifacts"])
     _add_trace(session, "VideoDemo", "updated", session["video_demo_state"])
     session["report"] = generate_learning_report(session, concept_summary)
+    _persist_session(session)
     return session
 
 
@@ -284,7 +305,12 @@ def submit_answer(request: AnswerRequest) -> dict[str, Any]:
 def save_code(request: CodeRequest) -> SavedCodeResult:
     session = _require_session(request.session_id)
     try:
-        saved = save_student_solution(request.path, request.content)
+        saved = save_student_solution(
+            request.path,
+            request.content,
+            repo_root=session["repo_context"]["repo_root"],
+            problem_id=session["problem_id"],
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -299,6 +325,7 @@ def save_code(request: CodeRequest) -> SavedCodeResult:
             "bytes": len(saved["content"].encode("utf-8")),
         },
     )
+    _persist_session(session)
     return {
         "session_id": request.session_id,
         "path": saved["path"],
@@ -310,7 +337,11 @@ def save_code(request: CodeRequest) -> SavedCodeResult:
 @app.post("/api/run")
 def run_code(request: RunRequest) -> StudentTestResult:
     session = _require_session(request.session_id)
-    result = run_student_solution_tests(request.session_id)
+    result = run_student_solution_tests(
+        request.session_id,
+        repo_root=session["repo_context"]["repo_root"],
+        problem_id=session["problem_id"],
+    )
     session["workspace_artifacts"]["test_result"] = result
     _add_trace(
         session,
@@ -322,6 +353,7 @@ def run_code(request: RunRequest) -> StudentTestResult:
             "command": result["command_metadata"],
         },
     )
+    _persist_session(session)
     return result
 
 
@@ -337,6 +369,7 @@ def tutor(request: TutorRequest) -> TutorResponse:
         }
     )
     _add_trace(session, "Tutor", "hinted", response)
+    _persist_session(session)
     return response
 
 
@@ -360,8 +393,16 @@ def red_team() -> dict[str, Any]:
 def _require_session(session_id: str) -> dict[str, Any]:
     session = _sessions.get(session_id)
     if not session:
+        session = _store.load_session(session_id)
+        if session:
+            _sessions[session_id] = session
+    if not session:
         raise HTTPException(status_code=404, detail="session not found")
     return session
+
+
+def _persist_session(session: dict[str, Any]) -> None:
+    _store.save_session(session)
 
 
 def _agent_mode() -> str:
@@ -410,7 +451,7 @@ def checkpoint_question(plan: dict[str, Any]) -> dict[str, Any]:
 def judge_answer(answer: str, question: dict[str, Any] | str | None = None) -> dict[str, Any]:
     runtime_func = _runtime_function("judge_answer")
     if runtime_func is None:
-        return local_agents.judge_answer(answer)
+        return local_agents.judge_answer(answer, question)
     try:
         return runtime_func(question or {}, answer)
     except TypeError:
@@ -428,7 +469,7 @@ def explainer_trace(plan: dict[str, Any]) -> dict[str, Any]:
 def planned_codex_actions(level: int, session: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     runtime_func = _runtime_function("planned_codex_actions")
     if runtime_func is None:
-        raw_actions = local_agents.planned_codex_actions(level)
+        raw_actions = local_agents.planned_codex_actions(level, session)
     else:
         session = session or {}
         try:
@@ -541,12 +582,13 @@ def _mentions_failure(text: str) -> bool:
 
 
 def _locked_visual_trace(plan: dict[str, Any]) -> dict[str, Any]:
+    spec = get_problem_spec(str(plan.get("problem_id") or "two_sum"))
     return {
         "available": False,
         "status": "locked",
         "locked_until_level": 2,
         "source_pattern": plan.get("pattern"),
-        "problem": "Two Sum: nums=[2, 7, 11, 15], target=9",
+        "problem": spec["visual_trace"]["problem"],
         "insight": None,
         "steps": [],
         "stepper": [],

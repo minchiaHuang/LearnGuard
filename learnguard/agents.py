@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from .contracts import JudgeResult, WorkspaceAction
+from .problem_specs import DEFAULT_PROBLEM_ID, get_problem_spec
 
 
 AUTONOMY_LEVELS: dict[int, dict[str, Any]] = {
@@ -76,55 +77,64 @@ TWO_SUM_EVAL_CASES: list[dict[str, Any]] = [
         "expected_score": 4,
         "expected_level": 4,
     },
+    {
+        "name": "paraphrased_full_concept",
+        "student_answer": (
+            "The naive version compares every possible pair, so the number of checks grows quadratically. "
+            "A dictionary of prior values lets each item query the needed partner in constant average time."
+        ),
+        "expected_score": 4,
+        "expected_level": 4,
+    },
+    {
+        "name": "keyword_stuffing_not_full_understanding",
+        "student_answer": "nested loops n^2 hash map complement",
+        "expected_score": 3,
+        "expected_level": 3,
+    },
+    {
+        "name": "incorrect_complexity_claim",
+        "student_answer": "Use nested loops because checking every pair is O(1), and a hash map is slower.",
+        "expected_score": 1,
+        "expected_level": 1,
+    },
 ]
 
 
 def solver_plan(repo_context: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Return the fixed Two Sum plan used by the demo."""
+    """Return the built-in problem plan used by the demo."""
+    spec = _spec_from_context(repo_context)
     return {
-        "pattern": "hash map / complement lookup",
-        "concepts": [
-            "pair enumeration",
-            "brute force complexity",
-            "complement reasoning",
-            "O(1) average lookup",
-            "trade space for time",
-        ],
-        "key_insight": "For each number x, check whether target - x was already seen.",
-        "target_file": "solution.py",
-        "test_file": "tests/test_two_sum.py",
-        "approach_steps": [
-            "iterate through nums with each index",
-            "calculate complement = target - num",
-            "if complement exists in seen values, return both indices",
-            "otherwise store num -> index for future checks",
-        ],
-        "complexity": {"time": "O(n)", "space": "O(n)"},
+        "problem_id": spec["problem_id"],
+        "pattern": spec["pattern"],
+        "concepts": list(spec["concepts"]),
+        "key_insight": spec["key_insight"],
+        "target_file": spec["target_file"],
+        "test_file": spec["test_file"],
+        "approach_steps": list(spec["approach_steps"]),
+        "complexity": dict(spec["complexity"]),
         "repo_context_loaded": bool(repo_context),
     }
 
 
 def checkpoint_question(plan: dict[str, Any]) -> dict[str, Any]:
-    """Return the single Socratic checkpoint for the strict demo."""
-    return {
-        "question": "Before I generate anything: what is the brute-force approach to Two Sum, and why is it O(n^2)?",
-        "what_good_answer_contains": [
-            "mentions checking every pair with nested loops",
-            "quantifies pair checks as n*(n-1)/2 or about n^2",
-            "explains why this grows slowly for large inputs",
-            "connects the improvement to storing seen values and checking complements",
-        ],
-        "follow_up_if_partial": (
-            "You mentioned checking pairs. How many pairs are checked for n items, "
-            "and what does the hash map let us avoid?"
-        ),
-        "concept_being_tested": "brute_force_complexity_to_complement_lookup",
-        "source_pattern": plan["pattern"],
-    }
+    """Return the Socratic checkpoint for the selected built-in problem."""
+    spec = get_problem_spec(str(plan.get("problem_id") or DEFAULT_PROBLEM_ID))
+    checkpoint = dict(spec["checkpoint"])
+    checkpoint["source_pattern"] = plan["pattern"]
+    checkpoint["problem_id"] = spec["problem_id"]
+    return checkpoint
 
 
-def judge_answer(answer: str) -> JudgeResult:
+def judge_answer(answer: str, question: dict[str, Any] | str | None = None) -> JudgeResult:
     """Score an answer with deterministic keyword rules."""
+    problem_id = _problem_id_from_question(question)
+    if problem_id == "contains_duplicate":
+        return _judge_contains_duplicate(answer)
+    return _judge_two_sum(answer)
+
+
+def _judge_two_sum(answer: str) -> JudgeResult:
     normalized = _normalize(answer)
     rubric = {
         "mentions checking every pair / nested loop": _mentions_pair_search(normalized),
@@ -134,6 +144,13 @@ def judge_answer(answer: str) -> JudgeResult:
     }
     scores = {name: int(met) for name, met in rubric.items()}
     total = sum(scores.values())
+    if total == 4 and _looks_like_keyword_stuffing(normalized):
+        scores["connects improvement to hash map complement lookup"] = 0
+        total = 3
+    if _has_two_sum_contradiction(normalized):
+        scores["connects improvement to hash map complement lookup"] = 0
+        scores["explains why brute force is slow"] = 0
+        total = sum(scores.values())
     missing = [name for name, met in scores.items() if met == 0]
 
     if total == 4:
@@ -164,6 +181,49 @@ def judge_answer(answer: str) -> JudgeResult:
     }
 
 
+def _judge_contains_duplicate(answer: str) -> JudgeResult:
+    normalized = _normalize(answer)
+    rubric = {
+        "mentions comparing values for duplicates": _mentions_pair_search(normalized)
+        or "compare" in normalized
+        or "duplicate" in normalized,
+        "quantifies comparisons as n^2 or repeated scans": _mentions_quadratic_count(normalized)
+        or "repeated scan" in normalized,
+        "connects improvement to a set of seen values": _mentions_set_memory(normalized),
+        "explains membership lookup avoids pair scanning": _mentions_membership_lookup(normalized),
+    }
+    scores = {name: int(met) for name, met in rubric.items()}
+    total = sum(scores.values())
+    missing = [name for name, met in scores.items() if met == 0]
+
+    if total == 4:
+        verdict = "complete"
+        action = "unlock"
+        hint = "Good. You connected repeated pair checks to a set membership lookup."
+    elif total == 3:
+        verdict = "mostly_correct"
+        action = "hint_minor"
+        hint = "Almost there. Add why set membership avoids scanning prior values again."
+    elif total == 2:
+        verdict = "partial"
+        action = "hint"
+        hint = "You are on the right track. Quantify the pair checks and name what the set remembers."
+    else:
+        verdict = "insufficient"
+        action = "correct_misconception"
+        hint = "Start with brute force: compare values pair by pair, then explain what a set of seen values can remember."
+
+    return {
+        "scores": scores,
+        "total": total,
+        "max": 4,
+        "verdict": verdict,
+        "missing": missing,
+        "action": action,
+        "hint": hint,
+    }
+
+
 def score_to_level(score: int, max_score: int = 4) -> int:
     """Map rubric score to the matching autonomy level."""
     if max_score <= 0:
@@ -172,72 +232,53 @@ def score_to_level(score: int, max_score: int = 4) -> int:
 
 
 def explainer_trace(plan: dict[str, Any]) -> dict[str, Any]:
-    """Return a concrete Two Sum trace for the frontend."""
-    return {
-        "problem": "Two Sum: nums=[2, 7, 11, 15], target=9",
-        "insight": "Store values we have seen. For each new number, ask whether its complement is already stored.",
-        "steps": [
-            {
-                "step": 1,
-                "action": "i=0, num=2, need=9-2=7",
-                "map_state": "{}",
-                "question": "Is 7 in the map?",
-                "result": "No. Store 2 -> 0.",
-                "map_after": "{2: 0}",
-            },
-            {
-                "step": 2,
-                "action": "i=1, num=7, need=9-7=2",
-                "map_state": "{2: 0}",
-                "question": "Is 2 in the map?",
-                "result": "Yes. Return [0, 1].",
-                "map_after": "done",
-            },
-        ],
-        "complexity_explanation": (
-            "The loop visits each value once, and each hash map lookup is O(1) on average, "
-            "so the total time is O(n)."
-        ),
-        "mermaid": "graph LR\n  A[num=2] -->|store 2->0| B[map has 2]\n  C[num=7] -->|need=2 found| D[return 0,1]",
-        "source_pattern": plan["pattern"],
-    }
+    """Return a concrete trace for the selected built-in problem."""
+    spec = get_problem_spec(str(plan.get("problem_id") or DEFAULT_PROBLEM_ID))
+    trace = dict(spec["visual_trace"])
+    trace["steps"] = [dict(step) for step in spec["visual_trace"]["steps"]]
+    trace["source_pattern"] = plan["pattern"]
+    trace["problem_id"] = spec["problem_id"]
+    return trace
 
 
-def planned_codex_actions(level: int) -> list[WorkspaceAction]:
+def planned_codex_actions(level: int, session: dict[str, Any] | None = None) -> list[WorkspaceAction]:
     """Return intended Codex actions, including blocked attempts for demo visibility."""
+    repo_context = (session or {}).get("repo_context") or {}
+    target_file = repo_context.get("target_file", "solution.py")
+    test_file = repo_context.get("test_file", "tests/test_two_sum.py")
     if level <= 0:
         return [
             {"type": "ask_checkpoint", "reason": "Learner needs the checkpoint first."},
-            {"type": "read_file", "path": "solution.py", "reason": "Codex tried to inspect solution too early."},
+            {"type": "read_file", "path": target_file, "reason": "Codex tried to inspect solution too early."},
         ]
     if level == 1:
         return [
             {"type": "list_files", "reason": "Orient to the demo repo."},
             {"type": "read_problem", "path": "problem.md", "reason": "Read the problem statement."},
-            {"type": "read_test", "path": "tests/test_two_sum.py", "reason": "Read the failing test."},
+            {"type": "read_test", "path": test_file, "reason": "Read the failing test."},
             {"type": "name_pattern", "reason": "Name the algorithm pattern only."},
-            {"type": "read_solution", "path": "solution.py", "reason": "Codex tried to inspect implementation."},
+            {"type": "read_solution", "path": target_file, "reason": "Codex tried to inspect implementation."},
         ]
     if level == 2:
         return [
             {"type": "read_problem", "path": "problem.md", "reason": "Read task context."},
-            {"type": "read_test", "path": "tests/test_two_sum.py", "reason": "Read failing test."},
-            {"type": "read_solution", "path": "solution.py", "reason": "Inspect current solution."},
+            {"type": "read_test", "path": test_file, "reason": "Read failing test."},
+            {"type": "read_solution", "path": target_file, "reason": "Inspect current solution."},
             {"type": "generate_pseudocode", "reason": "Give a plan without code changes."},
             {"type": "generate_test_plan", "reason": "Explain what tests will verify."},
-            {"type": "apply_patch", "path": "solution.py", "reason": "Codex attempted to fix the file."},
-            {"type": "run_command", "command": ["pytest", "tests/test_two_sum.py", "-q"], "reason": "Codex attempted to run tests."},
+            {"type": "apply_patch", "path": target_file, "reason": "Codex attempted to fix the file."},
+            {"type": "run_command", "command": ["pytest", test_file, "-q"], "reason": "Codex attempted to run tests."},
             {"type": "show_diff", "reason": "Codex attempted to show a diff."},
         ]
     if level == 3:
         return [
-            {"type": "read_file", "path": "solution.py", "reason": "Read target file."},
-            {"type": "propose_diff", "path": "solution.py", "reason": "Patch text is withheld from student-facing responses."},
-            {"type": "explain_diff", "path": "solution.py", "reason": "Explain the concept without inserting code."},
+            {"type": "read_file", "path": target_file, "reason": "Read target file."},
+            {"type": "propose_diff", "path": target_file, "reason": "Patch text is withheld from student-facing responses."},
+            {"type": "explain_diff", "path": target_file, "reason": "Explain the concept without inserting code."},
         ]
     return [
-        {"type": "read_file", "path": "solution.py", "reason": "Read the learner's current file for context."},
-        {"type": "run_command", "command": ["pytest", "tests/test_two_sum.py", "-q"], "reason": "Student should use /api/run to validate saved code."},
+        {"type": "read_file", "path": target_file, "reason": "Read the learner's current file for context."},
+        {"type": "run_command", "command": ["pytest", test_file, "-q"], "reason": "Student should use /api/run to validate saved code."},
     ]
 
 
@@ -278,6 +319,8 @@ def _mentions_pair_search(text: str) -> bool:
             "all pairs",
             "each pair",
             "try every pair",
+            "possible pair",
+            "possible pairs",
         ]
     )
 
@@ -293,6 +336,7 @@ def _mentions_quadratic_count(text: str) -> bool:
         or "n squared" in text
         or "n-squared" in text
         or "quadratic" in text
+        or "number of checks grows" in text
     )
 
 
@@ -309,6 +353,75 @@ def _mentions_slow_growth(text: str) -> bool:
 
 
 def _mentions_hash_map_complement(text: str) -> bool:
-    has_lookup = "hash" in text or "map" in text or "dict" in text or "dictionary" in text or "seen" in text
-    has_complement = "complement" in text or "target -" in text or "target minus" in text or "need" in text
+    has_lookup = (
+        "hash" in text
+        or "map" in text
+        or "dict" in text
+        or "dictionary" in text
+        or "seen" in text
+        or "prior values" in text
+    )
+    has_complement = (
+        "complement" in text
+        or "target -" in text
+        or "target minus" in text
+        or "need" in text
+        or "partner" in text
+    )
     return has_lookup and has_complement
+
+
+def _mentions_set_memory(text: str) -> bool:
+    return any(word in text for word in ["set", "seen", "remember", "remembering", "stored"])
+
+
+def _mentions_membership_lookup(text: str) -> bool:
+    return any(word in text for word in ["membership", "lookup", "already in", "in the set", "seen before"])
+
+
+def _looks_like_keyword_stuffing(text: str) -> bool:
+    words = re.findall(r"[a-z0-9()^*+-]+", text)
+    has_core_terms = all(term in text for term in ("nested", "n^2", "hash", "complement"))
+    return has_core_terms and len(words) < 10
+
+
+def _has_two_sum_contradiction(text: str) -> bool:
+    return any(
+        phrase in text
+        for phrase in [
+            "every pair is o(1)",
+            "checking every pair is o(1)",
+            "nested loops are o(1)",
+            "hash map is slower",
+            "hash maps are slower",
+            "do not need complement",
+            "reuse the same element",
+        ]
+    )
+
+
+def _spec_from_context(repo_context: dict[str, Any] | None) -> dict[str, Any]:
+    problem_id = DEFAULT_PROBLEM_ID
+    if repo_context:
+        problem_id = str(repo_context.get("problem_id") or repo_context.get("task_id") or DEFAULT_PROBLEM_ID)
+        if problem_id == "two_sum_fix":
+            problem_id = "two_sum"
+        if problem_id == "contains_duplicate_fix":
+            problem_id = "contains_duplicate"
+    return get_problem_spec(problem_id)
+
+
+def _problem_id_from_question(question: dict[str, Any] | str | None) -> str:
+    if isinstance(question, dict):
+        value = question.get("problem_id") or question.get("task_id")
+        if value:
+            resolved = str(value)
+            if resolved == "two_sum_fix":
+                return "two_sum"
+            if resolved == "contains_duplicate_fix":
+                return "contains_duplicate"
+            return resolved
+        concept = str(question.get("concept_being_tested") or "")
+        if "duplicate" in concept or "membership" in concept:
+            return "contains_duplicate"
+    return DEFAULT_PROBLEM_ID

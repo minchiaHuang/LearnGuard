@@ -35,6 +35,11 @@ def list_tools() -> list[dict[str, Any]]:
                         "type": "boolean",
                         "description": "Reset demo_repo to the intentionally failing baseline before returning context.",
                         "default": True,
+                    },
+                    "problem_id": {
+                        "type": "string",
+                        "description": "Built-in problem id. Defaults to two_sum.",
+                        "default": "two_sum",
                     }
                 },
                 "additionalProperties": False,
@@ -63,6 +68,11 @@ def list_tools() -> list[dict[str, Any]]:
                         "type": "object",
                         "description": "Workspace action object, for example {'type':'apply_patch','path':'solution.py'}.",
                     },
+                    "problem_id": {
+                        "type": "string",
+                        "description": "Built-in problem id used for the action allowlist.",
+                        "default": "two_sum",
+                    },
                 },
                 "required": ["autonomy_level", "action"],
                 "additionalProperties": False,
@@ -83,6 +93,11 @@ def list_tools() -> list[dict[str, Any]]:
                         "type": "boolean",
                         "description": "When false, return only the gate decision.",
                         "default": True,
+                    },
+                    "problem_id": {
+                        "type": "string",
+                        "description": "Built-in problem id used for the action allowlist and workspace.",
+                        "default": "two_sum",
                     },
                 },
                 "required": ["autonomy_level", "action"],
@@ -153,7 +168,8 @@ def serve_stdio() -> None:
 
 
 def _tool_start_session(arguments: dict[str, Any]) -> dict[str, Any]:
-    repo_context = load_demo_repo_context(reset=bool(arguments.get("reset_demo_repo", True)))
+    problem_id = str(arguments.get("problem_id") or "two_sum")
+    repo_context = _mcp_repo_context(problem_id, reset=bool(arguments.get("reset_demo_repo", True)))
     plan = agents.solver_plan(repo_context)
     checkpoint = agents.checkpoint_question(plan)
     return {
@@ -176,7 +192,9 @@ def _tool_judge_answer(arguments: dict[str, Any]) -> dict[str, Any]:
 def _tool_gate_action(arguments: dict[str, Any]) -> dict[str, Any]:
     level = _require_level(arguments.get("autonomy_level"))
     action = _require_object(arguments.get("action"), "action")
-    decision = enforce_codex_action(level, action)
+    problem_id = str(arguments.get("problem_id") or "two_sum")
+    repo_context = _mcp_repo_context(problem_id, reset=False)
+    decision = enforce_codex_action(level, action, allowed_paths=repo_context["allowed_read_paths"])
     return {"decision": decision}
 
 
@@ -184,12 +202,26 @@ def _tool_execute_action(arguments: dict[str, Any]) -> dict[str, Any]:
     level = _require_level(arguments.get("autonomy_level"))
     action = _require_object(arguments.get("action"), "action")
     execute = bool(arguments.get("execute", True))
-    decision = enforce_codex_action(level, action)
+    problem_id = str(arguments.get("problem_id") or "two_sum")
+    repo_context = _mcp_repo_context(problem_id, reset=False)
+    decision = enforce_codex_action(level, action, allowed_paths=repo_context["allowed_read_paths"])
     if not decision["allowed"] or not execute:
         return {"decision": decision, "executed": False}
 
-    result = execute_workspace_action(action)
+    result = execute_workspace_action(
+        action,
+        repo_root=repo_context["repo_root"],
+        problem_id=repo_context["problem_id"],
+    )
     return {"decision": decision, "executed": True, "result": result}
+
+
+def _mcp_repo_context(problem_id: str, *, reset: bool) -> dict[str, Any]:
+    return load_demo_repo_context(
+        reset=reset,
+        session_id=f"mcp-{problem_id}",
+        problem_id=problem_id,
+    )
 
 
 def _tool_response(payload: dict[str, Any]) -> dict[str, Any]:
