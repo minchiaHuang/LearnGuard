@@ -133,10 +133,20 @@ struct AnswerRequest: Encodable {
     }
 }
 
+struct SessionRequest: Encodable {
+    let problemId: String
+
+    enum CodingKeys: String, CodingKey {
+        case problemId = "problem_id"
+    }
+}
+
 struct LearnGuardSession: Decodable {
     let sessionId: String?
+    let problemId: String?
     let task: String?
     let taskId: String?
+    let problemCatalog: [ProblemCatalogItem]?
     let agentMode: String?
     let status: String?
     let autonomyLevel: Int?
@@ -149,6 +159,23 @@ struct LearnGuardSession: Decodable {
     let visualTrace: VisualTrace?
     let workspaceArtifacts: WorkspaceArtifacts?
     let report: LearningReport?
+}
+
+struct ProblemCatalogResponse: Decodable {
+    let problems: [ProblemCatalogItem]
+}
+
+struct ProblemCatalogItem: Decodable, Identifiable {
+    let problemId: String
+    let taskId: String?
+    let title: String
+    let task: String?
+    let targetFile: String?
+    let testFile: String?
+    let pattern: String?
+    let concepts: [String]?
+
+    var id: String { problemId }
 }
 
 struct SessionHistoryResponse: Decodable {
@@ -361,6 +388,177 @@ struct Concept: Decodable, Identifiable {
     let category: String?
 }
 
+struct EvalScoreboardResult: Decodable {
+    let cases: [EvalCaseResult]
+    let total: Int
+    let passed: Int
+    let allPassed: Bool
+    let sections: [EvalSection]
+    let judgeMode: JudgeMode?
+
+    var sectionCards: [EvalSection] {
+        sections
+    }
+
+    var redTeamSection: EvalSection? {
+        sections.first { $0.id == "red_team" }
+    }
+}
+
+struct EvalSection: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let headlineMetric: String
+    let passed: Int
+    let total: Int
+    let allPassed: Bool
+    let cases: [EvalCaseResult]
+    let blockRate: String?
+    let precision: String?
+
+    var statusText: String {
+        allPassed ? "PASS" : "REVIEW"
+    }
+}
+
+struct JudgeMode: Decodable {
+    let primarySource: String?
+    let model: String?
+    let fallbackUsed: Bool?
+    let fallbackError: String?
+
+    var displayText: String {
+        if let model, !model.isEmpty {
+            return "\(primarySource ?? "local") / \(model)"
+        }
+        return primarySource ?? "local"
+    }
+}
+
+struct EvalCaseResult: Decodable, Identifiable {
+    let name: String
+    let category: String?
+    let description: String?
+    let level: Int?
+    let expectedScore: Int?
+    let actualScore: Int?
+    let expectedLevel: Int?
+    let actualLevel: Int?
+    let expectedAllowed: Bool?
+    let actualAllowed: Bool?
+    let shouldBlock: Bool?
+    let blocked: Bool?
+    let passed: Bool
+    let source: String?
+    let fallbackError: String?
+    let violations: [String]?
+
+    var id: String { name }
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case category
+        case description
+        case level
+        case expectedScore
+        case actualScore
+        case expectedLevel
+        case actualLevel
+        case expectedAllowed
+        case actualAllowed
+        case shouldBlock
+        case blocked
+        case passed
+        case legacyPass = "pass"
+        case source
+        case fallbackError
+        case violations
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        category = try container.decodeIfPresent(String.self, forKey: .category)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        level = try container.decodeIfPresent(Int.self, forKey: .level)
+        expectedScore = try container.decodeIfPresent(Int.self, forKey: .expectedScore)
+        actualScore = try container.decodeIfPresent(Int.self, forKey: .actualScore)
+        expectedLevel = try container.decodeIfPresent(Int.self, forKey: .expectedLevel)
+        actualLevel = try container.decodeIfPresent(Int.self, forKey: .actualLevel)
+        expectedAllowed = try container.decodeIfPresent(Bool.self, forKey: .expectedAllowed)
+        actualAllowed = try container.decodeIfPresent(Bool.self, forKey: .actualAllowed)
+        shouldBlock = try container.decodeIfPresent(Bool.self, forKey: .shouldBlock)
+        blocked = try container.decodeIfPresent(Bool.self, forKey: .blocked)
+        passed = try container.decodeIfPresent(Bool.self, forKey: .passed)
+            ?? container.decodeIfPresent(Bool.self, forKey: .legacyPass)
+            ?? false
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        fallbackError = try container.decodeIfPresent(String.self, forKey: .fallbackError)
+        violations = try container.decodeIfPresent([String].self, forKey: .violations)
+    }
+}
+
+struct SkillsMemoryResult: Decodable {
+    let path: String
+    let updatedAt: String?
+    let markdown: String
+    let summary: SkillsMemorySummary
+}
+
+struct SkillsMemorySummary: Decodable {
+    let sessionCount: Int?
+    let latestSession: LatestSkillSession?
+    let verifiedSkills: [SkillConcept]
+    let weakSkills: [SkillConcept]
+    let learningDebtTrend: [LearningDebtPoint]
+    let recommendedNextTask: RecommendedTask?
+    let demoSafeNote: String?
+}
+
+struct LatestSkillSession: Decodable {
+    let sessionId: String?
+    let task: String?
+    let problemId: String?
+    let autonomyLevel: Int?
+    let score: Int?
+    let max: Int?
+    let learningDebt: String?
+    let updatedAt: String?
+
+    var scoreText: String {
+        guard let score, let max else { return "none" }
+        return "\(score)/\(max)"
+    }
+}
+
+struct SkillConcept: Decodable, Identifiable {
+    let id: String?
+    let name: String?
+    let category: String?
+    let count: Int?
+}
+
+struct LearningDebtPoint: Decodable, Identifiable {
+    let sessionId: String?
+    let learningDebt: String?
+    let score: Int?
+    let max: Int?
+    let updatedAt: String?
+
+    var id: String { "\(sessionId ?? "session")-\(updatedAt ?? "")" }
+}
+
+struct RecommendedTask: Decodable {
+    let taskId: String?
+    let title: String?
+    let difficulty: Int?
+    let reason: String?
+
+    var displayTitle: String {
+        title ?? taskId ?? "Pending"
+    }
+}
+
 enum JSONValue: Decodable, CustomStringConvertible {
     case string(String)
     case number(Double)
@@ -417,9 +615,10 @@ enum CodePane: String, CaseIterable, Identifiable {
 }
 
 enum RightPane: String, CaseIterable, Identifiable {
-    case tutor = "Tutor"
     case visual = "Visual"
-    case redTeam = "Red Team"
+    case tutor = "Tutor"
+    case scoreboard = "Scoreboard"
+    case script = "Script"
 
     var id: String { rawValue }
 }

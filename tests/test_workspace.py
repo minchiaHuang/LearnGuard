@@ -10,6 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from learnguard import workspace
+from learnguard.problem_specs import TWO_SUM_PATCHED
 
 
 def test_run_problem_pytest_returns_structured_timeout(monkeypatch, tmp_path):
@@ -48,3 +49,20 @@ def test_read_demo_file_rejects_path_traversal():
 
     with pytest.raises(ValueError, match="path traversal"):
         workspace.read_demo_file("../learnguard/app.py", repo_root=repo_root, problem_id="two_sum")
+
+
+def test_execute_workspace_action_apply_patch_updates_isolated_repo():
+    repo_root = workspace.ensure_demo_repo(reset=True, session_id="patch-test", problem_id="two_sum")
+
+    result = workspace.execute_workspace_action(
+        {"type": "apply_patch", "path": "solution.py"},
+        repo_root=repo_root,
+        problem_id="two_sum",
+    )
+
+    assert result["applied"] is True
+    assert result["diff_redacted"] is True
+    assert (repo_root / "solution.py").read_text(encoding="utf-8") == TWO_SUM_PATCHED
+
+    pytest_result = workspace.run_problem_pytest(repo_root=repo_root, problem_id="two_sum")
+    assert pytest_result["passed"] is True

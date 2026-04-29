@@ -4,21 +4,30 @@ struct ContentView: View {
     @StateObject private var state = AppState()
 
     var body: some View {
-        VStack(spacing: 0) {
-            titleBar
-            HStack(spacing: 0) {
-                FileTreeView(state: state)
-                    .frame(width: 220)
-                CodeEditorView(state: state)
-                    .frame(minWidth: 560)
-                TutorView(state: state)
-                    .frame(width: 360)
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 0) {
+                titleBar
+                HStack(spacing: 0) {
+                    FileTreeView(state: state)
+                        .frame(width: 260)
+                    CodeEditorView(state: state)
+                        .frame(minWidth: 520)
+                    TutorView(state: state)
+                        .frame(width: 420)
+                }
+                AppStatusBar(state: state)
             }
-            AppStatusBar(state: state)
+
+            if state.demoOverlayVisible {
+                DemoCaptionOverlay(state: state)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 38)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .background(LGStyle.appBackground)
         .foregroundStyle(LGStyle.text)
-        .frame(minWidth: 1220, minHeight: 760)
+        .frame(minWidth: 1260, minHeight: 760)
         .task {
             await state.checkBackend()
         }
@@ -41,27 +50,50 @@ struct ContentView: View {
                 .frame(width: 1, height: 18)
                 .padding(.horizontal, 4)
 
-            Text("LearnGuard")
-                .font(.system(size: 15, weight: .bold))
+            VStack(alignment: .leading, spacing: 1) {
+                Text("LearnGuard")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(LGStyle.text)
+                Text("Codex in study mode")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(LGStyle.secondary)
+            }
+
             Text("› \(state.currentFileName)")
-                .font(.system(size: 13))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(LGStyle.secondary)
+                .lineLimit(1)
 
             Spacer()
 
+            levelPill
             scorePill
-            Button("Demo") {
+            mcpPill
+
+            Button {
                 Task { await state.startSession() }
+            } label: {
+                Text("Demo")
+                    .font(.system(size: 13, weight: .semibold))
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.plain)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(LGStyle.softBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(LGStyle.border))
             .disabled(state.isBusy)
 
             Button {
                 Task { await state.runStudentCode() }
             } label: {
                 Label("Run", systemImage: "play.fill")
+                    .font(.system(size: 13, weight: .bold))
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(state.isBusy || state.sessionId == nil ? LGStyle.secondary.opacity(0.45) : LGStyle.accent, in: RoundedRectangle(cornerRadius: 8))
             .keyboardShortcut("r", modifiers: [.command])
             .disabled(state.isBusy || state.sessionId == nil)
 
@@ -74,9 +106,15 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .help(state.backendStatus)
+
+            HStack(spacing: 6) {
+                themeDot(Color(red: 0.86, green: 0.85, blue: 0.80), active: false)
+                themeDot(Color(red: 0.17, green: 0.17, blue: 0.18), active: true)
+                themeDot(Color(red: 0.10, green: 0.04, blue: 0.25), active: false)
+            }
         }
         .padding(.horizontal, 14)
-        .frame(height: 48)
+        .frame(height: 54)
         .background(Color.white.opacity(0.92))
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -102,6 +140,41 @@ struct ContentView: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(LGStyle.border))
     }
 
+    private var levelPill: some View {
+        let level = state.session?.autonomyLevel ?? 0
+        let color = level >= 4 ? LGStyle.green : level >= 2 ? LGStyle.orange : LGStyle.red
+
+        return HStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+                .shadow(color: color.opacity(0.45), radius: 3)
+            Text("Level \(level)/4")
+                .font(.system(size: 13, weight: .bold))
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.24)))
+    }
+
+    private var mcpPill: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(state.backendOnline ? LGStyle.green : LGStyle.red)
+                .frame(width: 6, height: 6)
+                .shadow(color: (state.backendOnline ? LGStyle.green : LGStyle.red).opacity(0.45), radius: 3)
+            Text("MCP")
+                .font(.system(size: 12, weight: .bold))
+        }
+        .foregroundStyle(state.backendOnline ? LGStyle.green : LGStyle.red)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background((state.backendOnline ? LGStyle.green : LGStyle.red).opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke((state.backendOnline ? LGStyle.green : LGStyle.red).opacity(0.24)))
+    }
+
     private var scoreValue: Int {
         guard let attempt = state.session?.attempts?.last, let score = attempt.score, let max = attempt.max, max > 0 else {
             return 0
@@ -119,5 +192,53 @@ struct ContentView: View {
         Circle()
             .fill(color)
             .frame(width: 12, height: 12)
+    }
+
+    private func themeDot(_ color: Color, active: Bool) -> some View {
+        Circle()
+            .fill(color)
+            .frame(width: 20, height: 20)
+            .overlay(Circle().stroke(active ? LGStyle.accent : LGStyle.border, lineWidth: active ? 2.5 : 1))
+    }
+}
+
+private struct DemoCaptionOverlay: View {
+    @ObservedObject var state: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(state.demoCaptionTitle, systemImage: "play.rectangle.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.white)
+                Spacer()
+                Text(state.demoElapsedText)
+                    .font(.system(.caption, design: .monospaced).weight(.bold))
+                    .foregroundStyle(Color.white.opacity(0.82))
+            }
+
+            Text(state.demoCaption)
+                .font(.system(size: 18, weight: .semibold))
+                .lineSpacing(4)
+                .foregroundStyle(Color.white)
+                .fixedSize(horizontal: false, vertical: true)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.18))
+                    Capsule()
+                        .fill(LGStyle.green)
+                        .frame(width: max(8, proxy.size.width * state.demoProgress))
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(18)
+        .frame(maxWidth: 780, alignment: .leading)
+        .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.18)))
+        .shadow(color: .black.opacity(0.25), radius: 18, y: 8)
+        .animation(.easeInOut(duration: 0.25), value: state.demoCaption)
     }
 }

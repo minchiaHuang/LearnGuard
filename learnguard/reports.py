@@ -51,6 +51,8 @@ def generate_learning_report(session: dict[str, Any], concept_summary: dict[str,
         "student_demonstrated_understanding": student_understanding,
         "learning_debt": learning_debt,
         "allowed_actions": WORKSPACE_ACTION_POLICIES[session["autonomy_level"]]["allowed_actions"],
+        "gate_decisions": session.get("gate_decisions", []),
+        "gate_timeline": _gate_timeline(session),
         "executed_actions": artifacts.get("allowed_actions", []),
         "blocked_actions": artifacts.get("blocked_actions", []),
         "verified_concepts": concept_summary.get("verified_concepts", []),
@@ -99,3 +101,61 @@ def _learning_debt_notes(learning_debt: str, codex_contribution: str, student_un
 
 def _visual_trace_available(visual_trace: dict[str, Any]) -> bool:
     return bool(visual_trace.get("available") or visual_trace.get("steps"))
+
+
+def _gate_timeline(session: dict[str, Any]) -> list[dict[str, Any]]:
+    timeline: list[dict[str, Any]] = []
+    for event in session.get("agent_trace", []):
+        agent = event.get("agent")
+        status = event.get("status")
+        payload = event.get("payload") or {}
+
+        if agent == "Socratic" and status == "paused":
+            timeline.append(
+                {
+                    "phase": "checkpoint",
+                    "status": "paused",
+                    "summary": payload.get("question"),
+                }
+            )
+            continue
+
+        if agent == "Judge" and status == "complete":
+            timeline.append(
+                {
+                    "phase": "understanding_eval",
+                    "status": "complete",
+                    "score": payload.get("score"),
+                    "verdict": payload.get("verdict"),
+                    "missing": payload.get("missing", []),
+                }
+            )
+            continue
+
+        if agent == "Gate" and status in {"allowed", "blocked"}:
+            action = payload.get("action") or {}
+            timeline.append(
+                {
+                    "phase": "action_gate",
+                    "status": status,
+                    "level": payload.get("level"),
+                    "action": action.get("type"),
+                    "path": action.get("path"),
+                    "violations": payload.get("violations", []),
+                }
+            )
+            continue
+
+        if agent == "Workspace" and status in {"action_complete", "action_skipped", "action_failed", "student_tests_complete"}:
+            timeline.append(
+                {
+                    "phase": "workspace",
+                    "status": status,
+                    "action": payload.get("type") or "run_command",
+                    "passed": payload.get("passed"),
+                    "exit_code": payload.get("exit_code"),
+                    "error_code": payload.get("error_code"),
+                }
+            )
+
+    return timeline

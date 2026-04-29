@@ -160,7 +160,7 @@ def execute_workspace_action(
     if action_type == "explain_diff":
         return {"type": action_type, "explanation": explain_patch(problem_id)}
     if action_type == "apply_patch":
-        return skipped_solution_patch(action.get("path", ""), problem_id=problem_id)
+        return apply_solution_patch(action.get("path", ""), repo_root=root, problem_id=problem_id)
     if action_type == "run_command":
         return run_problem_pytest(action.get("command"), repo_root=root, problem_id=problem_id)
     if action_type == "show_diff":

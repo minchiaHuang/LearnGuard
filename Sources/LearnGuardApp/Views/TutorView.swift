@@ -5,33 +5,62 @@ struct TutorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Right Pane", selection: $state.selectedRightPane) {
-                ForEach(RightPane.allCases) { pane in
-                    Text(pane.rawValue).tag(pane)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .background(Color.white)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(LGStyle.border)
-                    .frame(height: 1)
-            }
+            rightPaneTabs
 
             switch state.selectedRightPane {
             case .tutor:
                 tutorPanel
             case .visual:
                 visualPanel
-            case .redTeam:
-                RedTeamView(state: state)
+            case .scoreboard:
+                ScoreboardView(state: state)
+            case .script:
+                DemoScriptView(state: state)
             }
         }
         .background(LGStyle.panelBackground)
+    }
+
+    private var rightPaneTabs: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach([RightPane.tutor, .visual, .scoreboard, .script]) { pane in
+                    Button {
+                        state.selectedRightPane = pane
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(pane.rawValue)
+                            if pane == .scoreboard {
+                                Circle()
+                                    .fill(LGStyle.green)
+                                    .frame(width: 6, height: 6)
+                                    .shadow(color: LGStyle.green.opacity(0.45), radius: 3)
+                            }
+                        }
+                            .font(.system(size: 13, weight: state.selectedRightPane == pane ? .semibold : .regular))
+                            .lineLimit(1)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 8)
+                            .foregroundStyle(state.selectedRightPane == pane ? LGStyle.text : LGStyle.secondary)
+                            .background(
+                                state.selectedRightPane == pane ? LGStyle.softBackground : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 8)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help(pane.rawValue)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(LGStyle.border)
+                .frame(height: 1)
+        }
     }
 
     private var tutorPanel: some View {
@@ -71,50 +100,61 @@ struct TutorView: View {
     }
 
     private var emptyTutorState: some View {
-        SectionCard(title: "Codex Tutor", subtitle: "Hint-first support") {
-            Text("Start a demo session, edit solution.py, then ask about the failing test or your current approach.")
-                .foregroundStyle(.secondary)
-        }
+        TutorMessageBubble(
+            message: TutorMessage(
+                role: .tutor,
+                message: "Hi. Start a demo session and I will ask the checkpoint before Codex touches the workspace.",
+                hintLevel: nil,
+                containsSolution: false
+            )
+        )
     }
 
     private var composer: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Button("Hint") {
                     state.tutorDraft = "Give me one small hint about the next step."
                 }
-                Button("Explain Test") {
+                .buttonStyle(.borderless)
+
+                Button("Test") {
                     state.tutorDraft = "Explain what test_two_sum.py is checking."
                 }
+                .buttonStyle(.borderless)
+
                 Button("Checkpoint") {
                     state.tutorDraft = state.session?.checkpoint?.question ?? ""
                 }
+                .buttonStyle(.borderless)
+
                 Spacer()
             }
             .font(.caption)
+            .foregroundStyle(LGStyle.secondary)
 
-            TextEditor(text: $state.tutorDraft)
-                .font(.body)
-                .frame(minHeight: 76, maxHeight: 100)
-                .scrollContentBackground(.hidden)
-                .background(Color(red: 0.965, green: 0.965, blue: 0.970), in: RoundedRectangle(cornerRadius: 11))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 11)
-                        .stroke(LGStyle.border, lineWidth: 1)
-                )
+            HStack(alignment: .bottom, spacing: 10) {
+                TextEditor(text: $state.tutorDraft)
+                    .font(.system(size: 13))
+                    .frame(minHeight: 58, maxHeight: 88)
+                    .scrollContentBackground(.hidden)
+                    .background(Color(red: 0.965, green: 0.965, blue: 0.970), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(LGStyle.border, lineWidth: 1)
+                    )
 
-            HStack {
-                if let message = state.userMessage {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-                Spacer()
                 Button {
                     Task { await state.checkUnderstanding() }
                 } label: {
-                    Label("Check Understanding", systemImage: "checkmark.seal")
+                    Image(systemName: "checkmark.seal")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 38, height: 38)
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(LGStyle.secondary)
+                .background(LGStyle.softBackground, in: RoundedRectangle(cornerRadius: 10))
+                .help("Check Understanding")
                 .disabled(state.isBusy || state.sessionId == nil)
 
                 Button {
@@ -123,12 +163,24 @@ struct TutorView: View {
                     if state.isBusy {
                         ProgressView()
                             .controlSize(.small)
+                            .frame(width: 38, height: 38)
                     } else {
-                        Label("Send", systemImage: "paperplane")
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(width: 38, height: 38)
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
+                .foregroundStyle(sendButtonEnabled ? Color.white : LGStyle.secondary)
+                .background(sendButtonEnabled ? LGStyle.accent : LGStyle.softBackground, in: RoundedRectangle(cornerRadius: 10))
                 .disabled(state.isBusy || state.sessionId == nil)
+            }
+
+            if let message = state.userMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
             }
         }
         .padding(12)
@@ -138,6 +190,10 @@ struct TutorView: View {
                 .fill(LGStyle.border)
                 .frame(height: 1)
         }
+    }
+
+    private var sendButtonEnabled: Bool {
+        !state.tutorDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var understandingCard: some View {
@@ -220,18 +276,13 @@ private struct TutorMessageBubble: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Text(message.role.rawValue)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(LGStyle.secondary)
-                        if let hintLevel = message.hintLevel {
-                            Text(hintLevel)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(LGStyle.accent)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(LGStyle.accent.opacity(0.10), in: Capsule())
-                        }
+                    if let hintLevel = message.hintLevel {
+                        Text(hintLevel)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(message.role == .student ? Color.white.opacity(0.82) : LGStyle.accent)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background((message.role == .student ? Color.white : LGStyle.accent).opacity(0.10), in: Capsule())
                     }
 
                     Text(message.message)
@@ -240,7 +291,7 @@ private struct TutorMessageBubble: View {
                         .textSelection(.enabled)
                 }
                 .padding(11)
-                .frame(maxWidth: 280, alignment: .leading)
+                .frame(maxWidth: 320, alignment: .leading)
                 .foregroundStyle(message.role == .student ? Color.white : LGStyle.text)
                 .background(bubbleBackground, in: RoundedRectangle(cornerRadius: 14))
                 .overlay(
